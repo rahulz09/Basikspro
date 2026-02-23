@@ -250,7 +250,7 @@ export default function Wizard() {
         <div className="w-9 shrink-0" />
       </header>
 
-      <main className="flex-1 p-4 sm:p-6 lg:p-10 overflow-x-hidden">
+      <main className="flex-1 p-4 sm:p-6 lg:p-10 overflow-x-hidden overflow-y-auto">
         <AnimatePresence mode="wait">
           <motion.div key={currentStep} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }} className="h-full">
             {currentStep === 1 && <Step1Setup project={project} onNext={() => setCurrentStep(2)} />}
@@ -758,7 +758,7 @@ function Step3Audio({ project, onNext }: { project: any; onNext: () => void }) {
 // ─── STEP 4: VIDEO PREVIEW ─────────────────────────────────────────────────────
 type Phase = "idle" | "speaking" | "scoring";
 type TextSize = "small" | "medium" | "large";
-interface OverlayCfg { roleA: string; roleB: string; textSize: TextSize; showScores: boolean; showTimer: boolean; showTopic: boolean; showWaveform: boolean; showTranscript: boolean; showNarrator: boolean; bgOpacity: number; subBottom: number; subWidth: number; subBgOpacity: number; speakerAImage: string; speakerBImage: string; subMode: "word" | "line"; }
+interface OverlayCfg { roleA: string; roleB: string; textSize: TextSize; showScores: boolean; showTimer: boolean; showTopic: boolean; showWaveform: boolean; showTranscript: boolean; showNarrator: boolean; bgOpacity: number; subBottom: number; subWidth: number; subBgOpacity: number; speakerAImage: string; speakerBImage: string; subMode: "word" | "word2" | "line"; }
 
 function Step4Preview({ project }: { project: any }) {
   const dialogues: any[] = project.dialogues || [];
@@ -976,7 +976,7 @@ function Step4Preview({ project }: { project: any }) {
   const canvasProps = { project, current, isA, isNarrator, cfg, timerSeconds, isSpeaking: phase==="speaking", totA, totB, wordIdx, setCfg };
 
   return (
-    <div className="max-w-7xl mx-auto flex flex-col gap-2.5" style={{ height: "calc(100vh - 100px)" }}>
+    <div className="max-w-7xl mx-auto flex flex-col gap-2.5">
       {/* Controls toolbar */}
       <div className="flex items-center justify-between gap-2 flex-wrap shrink-0">
         <div className="flex items-center gap-2.5">
@@ -1010,11 +1010,14 @@ function Step4Preview({ project }: { project: any }) {
         </div>
       </div>
 
-      <div className="flex-1 flex gap-3 min-h-0">
-        {/* Settings Panel */}
+      {/* Canvas + Settings: canvas always full width (16:9), settings panel floats as overlay on right */}
+      <div className="relative">
+        {/* Settings Panel — absolute overlay on right, does NOT affect canvas width */}
         <AnimatePresence>
           {showSettings && (
-            <motion.div initial={{opacity:0,width:0}} animate={{opacity:1,width:"240px"}} exit={{opacity:0,width:0}} className="glass-panel rounded-2xl p-3 overflow-y-auto shrink-0 space-y-4" style={{minWidth:"240px"}}>
+            <motion.div initial={{opacity:0,x:20}} animate={{opacity:1,x:0}} exit={{opacity:0,x:20}}
+              className="absolute right-0 top-0 z-30 glass-panel rounded-2xl p-3 overflow-y-auto space-y-4 shadow-2xl border border-white/10"
+              style={{width:"240px", maxHeight:"min(520px, 70vh)"}}>
               <p className="text-white font-bold text-xs uppercase tracking-wider">Overlay</p>
               <div className="space-y-1.5">
                 <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Text Size</p>
@@ -1063,10 +1066,10 @@ function Step4Preview({ project }: { project: any }) {
               </div>
               <div className="space-y-1.5">
                 <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Subtitle Mode</p>
-                <div className="flex gap-1">
-                  {(["word","line"] as const).map(m => (
-                    <button key={m} onClick={() => set("subMode", m)} className={`flex-1 py-1 rounded-lg text-xs font-medium transition-all ${cfg.subMode === m ? "bg-primary text-white" : "bg-white/10 text-gray-400 hover:text-white"}`}>
-                      {m === "word" ? "Word×Word" : "Line×Line"}
+                <div className="flex gap-1 flex-wrap">
+                  {([["word","Full Para"],["word2","2-Line Roll"],["line","Line×Line"]] as const).map(([m, label]) => (
+                    <button key={m} onClick={() => set("subMode", m)} className={`flex-1 py-1 rounded-lg text-[10px] font-medium transition-all ${cfg.subMode === m ? "bg-primary text-white" : "bg-white/10 text-gray-400 hover:text-white"}`}>
+                      {label}
                     </button>
                   ))}
                 </div>
@@ -1107,122 +1110,120 @@ function Step4Preview({ project }: { project: any }) {
           )}
         </AnimatePresence>
 
-        {/* Canvas */}
-        <div className="flex-1 flex flex-col min-h-0 gap-2">
-          <div className="flex-1 relative rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black min-h-0 sub-canvas-root">
-            {/* Background */}
-            <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${bg})`, opacity: cfg.bgOpacity / 100 }} />
-            <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.25) 0%, transparent 30%, transparent 60%, rgba(0,0,0,0.4) 100%)" }} />
+        {/* Canvas — always 16:9, never shrinks */}
+        <div className="w-full aspect-video relative rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black sub-canvas-root">
+          {/* Background */}
+          <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${bg})`, opacity: cfg.bgOpacity / 100 }} />
+          <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.25) 0%, transparent 30%, transparent 60%, rgba(0,0,0,0.4) 100%)" }} />
 
-            {/* Render chosen style */}
-            {style===1 && <Style1 {...canvasProps} />}
-            {style===2 && <Style2 {...canvasProps} />}
-            {style===3 && <Style3 {...canvasProps} />}
-            {style===4 && <Style4 {...canvasProps} />}
-            {style===5 && <Style5 {...canvasProps} />}
-            {style===6 && <Style6 {...canvasProps} />}
+          {/* Render chosen style */}
+          {style===1 && <Style1 {...canvasProps} />}
+          {style===2 && <Style2 {...canvasProps} />}
+          {style===3 && <Style3 {...canvasProps} />}
+          {style===4 && <Style4 {...canvasProps} />}
+          {style===5 && <Style5 {...canvasProps} />}
+          {style===6 && <Style6 {...canvasProps} />}
 
-            {/* Score Card Overlay (not for narrator) */}
-            <AnimatePresence>
-              {phase === "scoring" && scoreData[idx] && !isNarrator && (
-                <ScoreCardPage
-                  scores={scoreData[idx].modelScores}
-                  speakerName={isA ? project.speakerAName : project.speakerBName}
-                  avg={scoreData[idx].avg} isA={isA}
-                  totalA={totA} totalB={totB}
-                  nameA={project.speakerAName} nameB={project.speakerBName}
-                />
-              )}
-            </AnimatePresence>
+          {/* Score Card Overlay (not for narrator) */}
+          <AnimatePresence>
+            {phase === "scoring" && scoreData[idx] && !isNarrator && (
+              <ScoreCardPage
+                scores={scoreData[idx].modelScores}
+                speakerName={isA ? project.speakerAName : project.speakerBName}
+                avg={scoreData[idx].avg} isA={isA}
+                totalA={totA} totalB={totB}
+                nameA={project.speakerAName} nameB={project.speakerBName}
+              />
+            )}
+          </AnimatePresence>
 
-            {/* Debate finished overlay */}
-            <AnimatePresence>
-              {phase === "idle" && idx >= dialogues.length - 1 && dialogues.length > 0 && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                  className="absolute inset-0 z-50 flex items-center justify-center"
-                  style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}>
-                  <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                    transition={{ type: "spring", damping: 18, stiffness: 220 }}
-                    className="text-center px-8 py-10 rounded-3xl border border-white/10 bg-black/60 max-w-sm">
-                    <div className="text-4xl mb-3">🏆</div>
-                    <h3 className="text-2xl font-black text-white mb-2">Debate Complete!</h3>
-                    <div className="flex justify-center gap-4 mt-4 mb-5">
-                      <div className="text-center">
-                        <div className="text-3xl font-black text-blue-400 tabular-nums">{totA.toFixed(1)}</div>
-                        <div className="text-xs text-blue-300 font-bold mt-0.5">{project.speakerAName}</div>
-                      </div>
-                      <div className="text-2xl font-black text-gray-500 self-center">vs</div>
-                      <div className="text-center">
-                        <div className="text-3xl font-black text-rose-400 tabular-nums">{totB.toFixed(1)}</div>
-                        <div className="text-xs text-rose-300 font-bold mt-0.5">{project.speakerBName}</div>
-                      </div>
+          {/* Debate finished overlay */}
+          <AnimatePresence>
+            {phase === "idle" && idx >= dialogues.length - 1 && dialogues.length > 0 && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="absolute inset-0 z-50 flex items-center justify-center"
+                style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}>
+                <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: "spring", damping: 18, stiffness: 220 }}
+                  className="text-center px-8 py-10 rounded-3xl border border-white/10 bg-black/60 max-w-sm">
+                  <div className="text-4xl mb-3">🏆</div>
+                  <h3 className="text-2xl font-black text-white mb-2">Debate Complete!</h3>
+                  <div className="flex justify-center gap-4 mt-4 mb-5">
+                    <div className="text-center">
+                      <div className="text-3xl font-black text-blue-400 tabular-nums">{totA.toFixed(1)}</div>
+                      <div className="text-xs text-blue-300 font-bold mt-0.5">{project.speakerAName}</div>
                     </div>
-                    <p className="text-gray-400 text-sm mb-4">
-                      {totA > totB ? `${project.speakerAName} wins!` : totB > totA ? `${project.speakerBName} wins!` : "It's a tie!"}
-                    </p>
-                    <button onClick={() => { setIdx(0); setPhase("idle"); }}
-                      className="px-5 py-2 bg-white text-black font-bold rounded-xl text-sm hover:bg-gray-200">
-                      Replay from Start
-                    </button>
-                  </motion.div>
+                    <div className="text-2xl font-black text-gray-500 self-center">vs</div>
+                    <div className="text-center">
+                      <div className="text-3xl font-black text-rose-400 tabular-nums">{totB.toFixed(1)}</div>
+                      <div className="text-xs text-rose-300 font-bold mt-0.5">{project.speakerBName}</div>
+                    </div>
+                  </div>
+                  <p className="text-gray-400 text-sm mb-4">
+                    {totA > totB ? `${project.speakerAName} wins!` : totB > totA ? `${project.speakerBName} wins!` : "It's a tie!"}
+                  </p>
+                  <button onClick={() => { setIdx(0); setPhase("idle"); }}
+                    className="px-5 py-2 bg-white text-black font-bold rounded-xl text-sm hover:bg-gray-200">
+                    Replay from Start
+                  </button>
                 </motion.div>
-              )}
-            </AnimatePresence>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {/* ── Playback controls bar — below canvas ── */}
+      <div className="glass-panel rounded-2xl px-4 py-2.5 flex items-center gap-3">
+        {/* Prev / Play / Next */}
+        <div className="flex items-center gap-1.5">
+          <button onClick={handlePrev} disabled={idx === 0 || phase !== "idle"} className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 transition-colors"><ArrowLeft className="w-4 h-4" /></button>
+          <button onClick={handlePlay} className={`px-5 py-1.5 font-bold rounded-xl text-sm flex items-center gap-1.5 transition-all ${phase !== "idle" ? "bg-red-500 text-white hover:bg-red-600" : "bg-primary text-white hover:bg-primary/90"}`}>
+            {phase !== "idle" ? <><Square className="w-3.5 h-3.5" />Stop</> : <><Play className="w-3.5 h-3.5" />Play</>}
+          </button>
+          <button onClick={handleNext} disabled={idx >= dialogues.length - 1 || phase !== "idle"} className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 transition-colors"><ArrowRight className="w-4 h-4" /></button>
+        </div>
+
+        {/* Progress bar */}
+        <div className="flex-1 flex flex-col gap-1 min-w-0">
+          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden cursor-pointer" onClick={e => {
+            if (phase !== "idle") return;
+            const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+            const pct = (e.clientX - rect.left) / rect.width;
+            setIdx(Math.min(dialogues.length - 1, Math.max(0, Math.round(pct * (dialogues.length - 1)))));
+          }}>
+            <motion.div className="h-full bg-gradient-to-r from-primary to-indigo-400 rounded-full"
+              animate={{ width: `${dialogues.length > 0 ? ((idx + 1) / dialogues.length) * 100 : 0}%` }}
+              transition={{ duration: 0.3 }} />
           </div>
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] text-gray-500 font-medium">
+              {phase === "scoring" ? "Scoring…" : phase === "speaking" ? (isNarrator ? "Narrator" : isA ? project.speakerAName : project.speakerBName) : "Paused"}
+            </span>
+            <span className="text-[10px] text-gray-600 tabular-nums">{idx + 1} / {dialogues.length}</span>
+          </div>
+        </div>
 
-          {/* ── Playback controls bar — below canvas ── */}
-          <div className="glass-panel rounded-2xl px-4 py-2.5 shrink-0 flex items-center gap-3">
-            {/* Prev / Play / Next */}
-            <div className="flex items-center gap-1.5">
-              <button onClick={handlePrev} disabled={idx === 0 || phase !== "idle"} className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 transition-colors"><ArrowLeft className="w-4 h-4" /></button>
-              <button onClick={handlePlay} className={`px-5 py-1.5 font-bold rounded-xl text-sm flex items-center gap-1.5 transition-all ${phase !== "idle" ? "bg-red-500 text-white hover:bg-red-600" : "bg-primary text-white hover:bg-primary/90"}`}>
-                {phase !== "idle" ? <><Square className="w-3.5 h-3.5" />Stop</> : <><Play className="w-3.5 h-3.5" />Play</>}
-              </button>
-              <button onClick={handleNext} disabled={idx >= dialogues.length - 1 || phase !== "idle"} className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 transition-colors"><ArrowRight className="w-4 h-4" /></button>
-            </div>
+        {/* Timer — always visible */}
+        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg tabular-nums font-mono font-bold text-sm transition-all ${phase === "speaking" && !currentHasAudio ? "bg-primary/20 text-primary" : "bg-white/5 text-gray-500"}`}>
+          <span>{fmt(phase === "speaking" ? countdown : 0)}</span>
+        </div>
 
-            {/* Progress bar */}
-            <div className="flex-1 flex flex-col gap-1 min-w-0">
-              <div className="h-1.5 bg-white/10 rounded-full overflow-hidden cursor-pointer" onClick={e => {
-                if (phase !== "idle") return;
-                const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-                const pct = (e.clientX - rect.left) / rect.width;
-                setIdx(Math.min(dialogues.length - 1, Math.max(0, Math.round(pct * (dialogues.length - 1)))));
-              }}>
-                <motion.div className="h-full bg-gradient-to-r from-primary to-indigo-400 rounded-full"
-                  animate={{ width: `${dialogues.length > 0 ? ((idx + 1) / dialogues.length) * 100 : 0}%` }}
-                  transition={{ duration: 0.3 }} />
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] text-gray-500 font-medium">
-                  {phase === "scoring" ? "Scoring…" : phase === "speaking" ? (isNarrator ? "Narrator" : isA ? project.speakerAName : project.speakerBName) : "Paused"}
-                </span>
-                <span className="text-[10px] text-gray-600 tabular-nums">{idx + 1} / {dialogues.length}</span>
-              </div>
-            </div>
+        {/* Phase badge */}
+        <div className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${phase === "speaking" ? "bg-emerald-500/20 text-emerald-400" : phase === "scoring" ? "bg-amber-500/20 text-amber-400" : "bg-white/5 text-gray-600"}`}>
+          {phase === "speaking" ? "Speaking" : phase === "scoring" ? "Scoring" : "Idle"}
+        </div>
 
-            {/* Timer — always visible */}
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg tabular-nums font-mono font-bold text-sm transition-all ${phase === "speaking" && !currentHasAudio ? "bg-primary/20 text-primary" : "bg-white/5 text-gray-500"}`}>
-              <span>{fmt(phase === "speaking" ? countdown : 0)}</span>
-            </div>
-
-            {/* Phase badge */}
-            <div className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${phase === "speaking" ? "bg-emerald-500/20 text-emerald-400" : phase === "scoring" ? "bg-amber-500/20 text-amber-400" : "bg-white/5 text-gray-600"}`}>
-              {phase === "speaking" ? "Speaking" : phase === "scoring" ? "Scoring" : "Idle"}
-            </div>
-
-            {/* Score summary */}
-            <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-white/10">
-              <div className="text-center">
-                <div className="text-xs font-black text-blue-400 tabular-nums">{totA.toFixed(1)}</div>
-                <div className="text-[9px] text-gray-600 truncate max-w-[50px]">{project.speakerAName}</div>
-              </div>
-              <div className="text-xs text-gray-600 font-bold">vs</div>
-              <div className="text-center">
-                <div className="text-xs font-black text-rose-400 tabular-nums">{totB.toFixed(1)}</div>
-                <div className="text-[9px] text-gray-600 truncate max-w-[50px]">{project.speakerBName}</div>
-              </div>
-            </div>
+        {/* Score summary */}
+        <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-white/10">
+          <div className="text-center">
+            <div className="text-xs font-black text-blue-400 tabular-nums">{totA.toFixed(1)}</div>
+            <div className="text-[9px] text-gray-600 truncate max-w-[50px]">{project.speakerAName}</div>
+          </div>
+          <div className="text-xs text-gray-600 font-bold">vs</div>
+          <div className="text-center">
+            <div className="text-xs font-black text-rose-400 tabular-nums">{totB.toFixed(1)}</div>
+            <div className="text-[9px] text-gray-600 truncate max-w-[50px]">{project.speakerBName}</div>
           </div>
         </div>
       </div>
@@ -1239,7 +1240,10 @@ function splitSentences(text: string): string[] {
   return parts.map(s => s.trim()).filter(Boolean);
 }
 
-function SubtitleText({ text, wordIdx, isSpeaking, textClass, subMode, isNarrator }: { text: string; wordIdx: number; isSpeaking: boolean; textClass: string; subMode?: "word" | "line"; isNarrator?: boolean }) {
+// Words-per-chunk for 2-line rolling mode (≈ 2 lines of ~9 words each)
+const CHUNK_SIZE = 10;
+
+function SubtitleText({ text, wordIdx, isSpeaking, textClass, subMode, isNarrator }: { text: string; wordIdx: number; isSpeaking: boolean; textClass: string; subMode?: "word" | "word2" | "line"; isNarrator?: boolean }) {
   const sentences = splitSentences(text);
   const words = text.split(" ");
   const italic = isNarrator ? " italic" : "";
@@ -1247,7 +1251,7 @@ function SubtitleText({ text, wordIdx, isSpeaking, textClass, subMode, isNarrato
   const colorClass = isNarrator ? " text-amber-200" : "";
 
   // Line-by-line mode — narrator defaults to line unless word is explicitly chosen
-  const useLineMode = subMode === "line" || (isNarrator && subMode !== "word");
+  const useLineMode = subMode === "line" || (isNarrator && subMode !== "word" && subMode !== "word2");
   if (useLineMode) {
     if (!isSpeaking || wordIdx < 0 || sentences.length === 0) {
       return <p className={`font-bold leading-snug${italic}${colorClass} ${textClass} opacity-0 select-none`}>{"\u00A0"}</p>;
@@ -1269,7 +1273,34 @@ function SubtitleText({ text, wordIdx, isSpeaking, textClass, subMode, isNarrato
     );
   }
 
-  // Word-by-word mode: 0 words until audio/timer starts
+  // 2-line rolling mode: show current CHUNK_SIZE-word window, words appear one by one
+  if (subMode === "word2") {
+    const visibleCount = isSpeaking && wordIdx >= 0 ? Math.min(wordIdx, words.length) : 0;
+    const chunkIdx = Math.floor(Math.max(0, visibleCount - 1) / CHUNK_SIZE);
+    const chunkStart = chunkIdx * CHUNK_SIZE;
+    const chunkEnd = chunkStart + CHUNK_SIZE;
+    const chunkWords = words.slice(chunkStart, chunkEnd);
+    const wordsInChunk = visibleCount - chunkStart; // how many revealed in this chunk
+    if (!isSpeaking || visibleCount === 0) {
+      return <p className={`font-bold leading-snug${italic}${colorClass} ${textClass} opacity-0 select-none`}>{"\u00A0"}</p>;
+    }
+    return (
+      <AnimatePresence mode="wait">
+        <motion.p key={chunkIdx}
+          initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.2 }}
+          className={`font-bold leading-snug${italic}${colorClass} ${textClass}`}>
+          {chunkWords.map((word, i) => (
+            <span key={i} className={`transition-opacity duration-150 ${i < wordsInChunk ? "opacity-100" : "opacity-0"}`}>
+              {word}{i < chunkWords.length - 1 ? " " : ""}
+            </span>
+          ))}
+        </motion.p>
+      </AnimatePresence>
+    );
+  }
+
+  // Word-by-word mode (full paragraph): 0 words until audio/timer starts
   const visibleCount = isSpeaking && wordIdx >= 0 ? Math.min(wordIdx, words.length) : 0;
   return (
     <p className={`font-bold leading-snug${italic}${colorClass} ${textClass}`}>
