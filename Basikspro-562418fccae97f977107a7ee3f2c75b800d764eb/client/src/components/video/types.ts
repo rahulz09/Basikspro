@@ -15,7 +15,7 @@ export interface OverlayCfg {
   narratorColor: string; narratorBorderColor: string;
   // New options
   scoreCardStyle: "grid" | "bar";
-  waveformStyle: "bars" | "pulse" | "line";
+  waveformStyle: "bars" | "pulse" | "line" | "meter";
   nameGap: number;
   fontStyle: "impact" | "sans" | "serif" | "mono";
   colorA: string;       // speaker A accent color, default "#4ade80"

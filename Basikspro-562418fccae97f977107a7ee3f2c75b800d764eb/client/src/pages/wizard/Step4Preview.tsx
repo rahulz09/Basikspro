@@ -497,9 +497,9 @@ export function Step4Preview({ project }: { project: any }) {
               {/* ── Waveform Style ── */}
               <div className="space-y-1.5">
                 <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Waveform Style</p>
-                <div className="flex gap-1">
-                  {([["bars", "Bars"], ["pulse", "Pulse"], ["line", "Wave"]] as const).map(([m, label]) => (
-                    <button key={m} onClick={() => set("waveformStyle", m)} className={`flex-1 py-1 rounded-lg text-[10px] font-medium transition-all ${cfg.waveformStyle === m ? "bg-primary text-white" : "bg-white/10 text-gray-400 hover:text-white"}`}>
+                <div className="grid grid-cols-2 gap-1">
+                  {([["bars", "Bars"], ["pulse", "Pulse"], ["line", "Lines"], ["meter", "VU Meter"]] as const).map(([m, label]) => (
+                    <button key={m} onClick={() => set("waveformStyle", m as any)} className={`py-1 rounded-lg text-[10px] font-medium transition-all ${cfg.waveformStyle === m ? "bg-primary text-white" : "bg-white/10 text-gray-400 hover:text-white"}`}>
                       {label}
                     </button>
                   ))}
