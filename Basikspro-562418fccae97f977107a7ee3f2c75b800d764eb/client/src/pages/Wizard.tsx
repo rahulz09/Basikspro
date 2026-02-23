@@ -1148,15 +1148,26 @@ function splitSentences(text: string): string[] {
   return parts.map(s => s.trim()).filter(Boolean);
 }
 
-function SubtitleText({ text, wordIdx, isSpeaking, textClass, italicize, subMode }: { text: string; wordIdx: number; isSpeaking: boolean; textClass: string; italicize?: boolean; subMode?: "word" | "line" }) {
+const NARRATOR_BOX_H: Record<string, string> = { small: "4.5em", medium: "6em", large: "8.5em" };
+
+function SubtitleText({ text, wordIdx, isSpeaking, textClass, subMode, isNarrator, textSize }: { text: string; wordIdx: number; isSpeaking: boolean; textClass: string; subMode?: "word" | "line"; isNarrator?: boolean; textSize?: string }) {
+  // Narrator: show full text at once in a fixed-height scrollable container
+  if (isNarrator) {
+    return (
+      <div style={{ height: NARRATOR_BOX_H[textSize || "medium"], overflowY: "auto", scrollbarWidth: "none" }}>
+        <p className={`font-bold leading-snug italic ${textClass}`}>{text}</p>
+      </div>
+    );
+  }
+
   const words = text.split(" ");
 
   if (subMode === "line") {
     const sentences = splitSentences(text);
+    // Speaker not speaking yet: show nothing
     if (!isSpeaking || wordIdx < 0 || sentences.length === 0) {
-      return <p className={`font-bold leading-snug ${italicize ? "italic" : ""} ${textClass}`}>{text}</p>;
+      return <p className={`font-bold leading-snug ${textClass} opacity-0 select-none`}>{sentences[0] || "\u00A0"}</p>;
     }
-    // Find which sentence we're in based on wordIdx
     let cumWords = 0;
     let sentIdx = sentences.length - 1;
     for (let i = 0; i < sentences.length; i++) {
@@ -1167,17 +1178,17 @@ function SubtitleText({ text, wordIdx, isSpeaking, textClass, italicize, subMode
       <AnimatePresence mode="wait">
         <motion.p key={sentIdx} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.18 }}
-          className={`font-bold leading-snug ${italicize ? "italic" : ""} ${textClass}`}>
+          className={`font-bold leading-snug ${textClass}`}>
           {sentences[sentIdx]}
         </motion.p>
       </AnimatePresence>
     );
   }
 
-  // Word-by-word mode
-  const visibleCount = isSpeaking && wordIdx >= 0 ? Math.min(wordIdx, words.length) : words.length;
+  // Word-by-word mode for speakers: 0 words until audio starts
+  const visibleCount = isSpeaking && wordIdx >= 0 ? Math.min(wordIdx, words.length) : 0;
   return (
-    <p className={`font-bold leading-snug ${italicize ? "italic" : ""} ${textClass}`}>
+    <p className={`font-bold leading-snug ${textClass}`}>
       {words.map((word, i) => (
         <span key={i} className={`transition-opacity duration-150 ${i < visibleCount ? "opacity-100" : "opacity-0"}`}>
           {word}{i < words.length - 1 ? " " : ""}
@@ -1278,7 +1289,7 @@ function Style1({ project, current, isA, isNarrator, cfg, timerSeconds, isSpeaki
               style={{ padding: cfg.textSize==="small"?"10px 16px":cfg.textSize==="large"?"18px 28px":"14px 22px", backgroundColor: isNarrator ? `rgba(69,26,3,${cfg.subBgOpacity/100})` : `rgba(10,10,20,${cfg.subBgOpacity/100})` }}>
               <div className={`absolute -bottom-2.5 ${isNarrator?"left-1/2 -translate-x-1/2":isA?"left-10":"right-10"} w-5 h-5 rotate-45 border-b border-r ${isNarrator?"border-amber-500/30":"border-white/10"}`} style={{ backgroundColor: isNarrator ? `rgba(69,26,3,${cfg.subBgOpacity/100})` : `rgba(10,10,20,${cfg.subBgOpacity/100})` }} />
               {isNarrator && <div className="flex items-center gap-1.5 mb-1 justify-center"><div className="w-1.5 h-1.5 rounded-full bg-amber-400" /><span className="text-[9px] font-bold tracking-wider uppercase text-amber-400">{project.speakerNarratorName}</span></div>}
-              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white text-center ${TEXT_SIZES[cfg.textSize]}`} italicize={isNarrator} subMode={cfg.subMode} />
+              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white text-center ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} textSize={cfg.textSize} />
             </motion.div>
           </AnimatePresence>
         </SubtitleBox>
@@ -1328,7 +1339,7 @@ function Style2({ project, current, isA, isNarrator, cfg, timerSeconds, isSpeaki
               className={`backdrop-blur-xl border rounded-2xl shadow-2xl ${BOX_PAD[cfg.textSize]} ${isNarrator ? "border-amber-500/20" : "border-white/10"}`}
               style={{ backgroundColor: isNarrator ? `rgba(69,26,3,${cfg.subBgOpacity/100})` : `rgba(0,0,0,${cfg.subBgOpacity/100})` }}>
               <div className="flex items-center gap-1.5 mb-1"><div className={`w-2 h-2 rounded-full ${isNarrator?"bg-amber-400":isA?"bg-blue-400":"bg-rose-400"}`}/><span className={`text-[10px] font-bold tracking-wider ${isNarrator?"text-amber-400":isA?"text-blue-400":"text-rose-400"}`}>{isNarrator?project.speakerNarratorName:isA?project.speakerAName:project.speakerBName}</span></div>
-              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={TEXT_SIZES[cfg.textSize]} italicize={isNarrator} subMode={cfg.subMode} />
+              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={TEXT_SIZES[cfg.textSize]} subMode={cfg.subMode} isNarrator={isNarrator} textSize={cfg.textSize} />
             </motion.div>
           </AnimatePresence>
         </SubtitleBox>
@@ -1356,7 +1367,7 @@ function Style3({ project, current, isA, isNarrator, cfg, timerSeconds, isSpeaki
               <p className="text-white font-black text-sm">{activeName}</p>
               <p className="text-white/70 text-[10px] font-bold tracking-wider">{activeRole}</p>
             </div>
-            {cfg.showTranscript&&current.text&&<div className="flex-1 backdrop-blur px-4 py-2 flex items-center" style={{backgroundColor:`rgba(10,10,20,${cfg.subBgOpacity/100})`}}><SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white font-semibold leading-snug ${TEXT_SIZES[cfg.textSize]}`} italicize={isNarrator} subMode={cfg.subMode} /></div>}
+            {cfg.showTranscript&&current.text&&<div className="flex-1 backdrop-blur px-4 py-2 flex items-center" style={{backgroundColor:`rgba(10,10,20,${cfg.subBgOpacity/100})`}}><SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white font-semibold leading-snug ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} textSize={cfg.textSize} /></div>}
           </div>
           {cfg.showScores&&<div className="flex text-xs">
             <div className="bg-blue-800/90 px-4 py-1 flex items-center gap-2"><span className="text-blue-200 font-bold">{project.speakerAName}</span><span className="text-white font-black tabular-nums">{totA.toFixed(1)}</span></div>
@@ -1412,7 +1423,7 @@ function Style4({ project, current, isA, isNarrator, cfg, timerSeconds, isSpeaki
               className={`${BOX_PAD[cfg.textSize]} rounded-xl border shadow-2xl backdrop-blur-lg ${isNarrator?"border-amber-500/30":isA?"border-blue-500/30":"border-rose-500/30"}`}
               style={{ backgroundColor: isNarrator?`rgba(69,26,3,${cfg.subBgOpacity/100})`:isA?`rgba(3,15,69,${cfg.subBgOpacity/100})`:`rgba(69,3,15,${cfg.subBgOpacity/100})` }}>
               <div className="flex items-center gap-1.5 mb-1"><div className={`w-1.5 h-1.5 rounded-full ${isNarrator?"bg-amber-400":isA?"bg-blue-400":"bg-rose-400"}`}/><span className={`text-[9px] font-bold tracking-wider uppercase ${isNarrator?"text-amber-400":isA?"text-blue-400":"text-rose-400"}`}>{isNarrator?project.speakerNarratorName:isA?project.speakerAName:project.speakerBName}</span></div>
-              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white leading-snug ${TEXT_SIZES[cfg.textSize]}`} italicize={isNarrator} subMode={cfg.subMode} />
+              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white leading-snug ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} textSize={cfg.textSize} />
             </motion.div>
           </AnimatePresence>
         </SubtitleBox>
@@ -1505,7 +1516,7 @@ function Style5({ project, current, isA, isNarrator, cfg, timerSeconds, isSpeaki
                   {isNarrator ? project.speakerNarratorName : isA ? project.speakerAName : project.speakerBName}
                 </span>
               </div>
-              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white ${TEXT_SIZES[cfg.textSize]}`} italicize={isNarrator} subMode={cfg.subMode} />
+              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} textSize={cfg.textSize} />
             </motion.div>
           </AnimatePresence>
         </SubtitleBox>
@@ -1587,7 +1598,7 @@ function Style6({ project, current, isA, isNarrator, cfg, timerSeconds, isSpeaki
             <motion.div key={current.text} initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}
               className={`${BOX_PAD[cfg.textSize]} rounded-2xl shadow-2xl backdrop-blur-xl border ${isNarrator ? "border-amber-500/30" : isA ? "border-blue-500/30" : "border-rose-500/30"}`}
               style={{ backgroundColor: `rgba(0,0,0,${cfg.subBgOpacity / 100})` }}>
-              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white text-center ${TEXT_SIZES[cfg.textSize]}`} italicize={isNarrator} subMode={cfg.subMode} />
+              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white text-center ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} textSize={cfg.textSize} />
             </motion.div>
           </AnimatePresence>
         </SubtitleBox>
