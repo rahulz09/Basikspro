@@ -56,6 +56,23 @@
   }
 }
 
+@keyframes subtitleChunkIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Canvas fills screen when in fullscreen mode for clean recording */
+.sub-canvas-root:fullscreen,
+.sub-canvas-root:-webkit-full-screen {
+  width: 100vw !important;
+  height: 100vh !important;
+  border-radius: 0 !important;
+  aspect-ratio: auto !important;
+}
+:fullscreen {
+  background: black;
+}
+
 @layer utilities {
   .glass-panel {
     @apply bg-card/60 backdrop-blur-xl border border-white/5 shadow-2xl shadow-black/50;

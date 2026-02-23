@@ -758,7 +758,7 @@ function Step3Audio({ project, onNext }: { project: any; onNext: () => void }) {
 // ─── STEP 4: VIDEO PREVIEW ─────────────────────────────────────────────────────
 type Phase = "idle" | "speaking" | "scoring";
 type TextSize = "small" | "medium" | "large";
-interface OverlayCfg { roleA: string; roleB: string; textSize: TextSize; showScores: boolean; showTimer: boolean; showTopic: boolean; showWaveform: boolean; showTranscript: boolean; showNarrator: boolean; bgOpacity: number; subBottom: number; subWidth: number; subBgOpacity: number; speakerAImage: string; speakerBImage: string; subMode: "word" | "word2" | "line"; }
+interface OverlayCfg { roleA: string; roleB: string; textSize: TextSize; showScores: boolean; showTimer: boolean; showTopic: boolean; showWaveform: boolean; showTranscript: boolean; showNarrator: boolean; bgOpacity: number; subBottom: number; subWidth: number; subHeight: number; subBgOpacity: number; speakerAImage: string; speakerBImage: string; subMode: "word" | "word2" | "line"; }
 
 function Step4Preview({ project }: { project: any }) {
   const dialogues: any[] = project.dialogues || [];
@@ -774,7 +774,7 @@ function Step4Preview({ project }: { project: any }) {
   const [bg, setBg] = useState(project.backgroundImage || DEMO_BG);
   const [showSettings, setShowSettings] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [cfg, setCfg] = useState<OverlayCfg>({ roleA: "SUPPORTER", roleB: "OPPONENT", textSize: "medium", showScores: true, showTimer: true, showTopic: true, showWaveform: true, showTranscript: true, showNarrator: true, bgOpacity: 100, subBottom: 12, subWidth: 80, subBgOpacity: 80, speakerAImage: "", speakerBImage: "", subMode: "word" });
+  const [cfg, setCfg] = useState<OverlayCfg>({ roleA: "SUPPORTER", roleB: "OPPONENT", textSize: "medium", showScores: true, showTimer: true, showTopic: true, showWaveform: true, showTranscript: true, showNarrator: true, bgOpacity: 100, subBottom: 12, subWidth: 80, subHeight: 0, subBgOpacity: 80, speakerAImage: "", speakerBImage: "", subMode: "word" });
   const [wordIdx, setWordIdx] = useState(-1);
   const [audioRemaining, setAudioRemaining] = useState(0);
   const wordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -950,17 +950,58 @@ function Step4Preview({ project }: { project: any }) {
     const r = new FileReader(); r.onload = ev => { const url = ev.target?.result as string; setBg(url); upd.mutate({ id: project.id, backgroundImage: url }); }; r.readAsDataURL(file);
   };
 
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+
   const handleRecord = async () => {
     if (isRecording) { mediaRecRef.current?.stop(); return; }
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      const rec = new MediaRecorder(stream); const chunks: Blob[] = [];
-      rec.ondataavailable = e => { if (e.data.size>0) chunks.push(e.data); };
-      rec.onstop = () => { stream.getTracks().forEach(t=>t.stop()); const blob=new Blob(chunks,{type:"video/webm"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`debate_${Date.now()}.webm`; a.click(); setIsRecording(false); };
-      rec.start(); mediaRecRef.current = rec; setIsRecording(true);
-      // auto-play
-      if (phase === "idle") { setCountdown(dialogueDuration(dialogues[idx]?.text||"")); setPhase("speaking"); }
-    } catch { alert("Screen recording cancelled."); }
+      // Enter fullscreen on just the canvas container so recording captures only the video canvas
+      const container = canvasContainerRef.current;
+      if (container && document.fullscreenEnabled) {
+        await container.requestFullscreen().catch(() => {});
+      }
+      // Capture display — user picks the tab/window; preferCurrentTab hint for Chrome
+      const constraints: any = { video: { frameRate: 30 }, audio: false };
+      // preferCurrentTab hint for Chrome (no-op if unsupported)
+      try { (constraints as any).preferCurrentTab = true; } catch {}
+      const displayStream = await navigator.mediaDevices.getDisplayMedia(constraints);
+
+      // Also capture audio from the dialogue audio element if playing
+      const combinedTracks = [...displayStream.getTracks()];
+      if (previewAudioRef.current) {
+        try {
+          const ac = getAC();
+          if (ac) {
+            const dest = ac.createMediaStreamDestination();
+            const src = ac.createMediaElementSource(previewAudioRef.current);
+            src.connect(dest); src.connect(ac.destination);
+            dest.stream.getAudioTracks().forEach(t => combinedTracks.push(t));
+          }
+        } catch { /* audio capture not available */ }
+      }
+
+      const finalStream = new MediaStream(combinedTracks);
+      const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+        ? "video/webm;codecs=vp9,opus" : "video/webm";
+      const rec = new MediaRecorder(finalStream, { mimeType, videoBitsPerSecond: 8_000_000 });
+      const chunks: Blob[] = [];
+      rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+      rec.onstop = () => {
+        finalStream.getTracks().forEach(t => t.stop());
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+        const blob = new Blob(chunks, { type: mimeType });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `debate_${Date.now()}.webm`;
+        a.click();
+        setIsRecording(false);
+      };
+      rec.start(500); // collect chunks every 500ms
+      mediaRecRef.current = rec;
+      setIsRecording(true);
+      // auto-play the debate when recording starts
+      if (phase === "idle") { unlockAudio(); setAudioPlayFailed(false); setCountdown(dialogueDuration(dialogues[idx]?.text || "")); setPhase("speaking"); }
+    } catch { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); }
   };
 
   const handleSpeakerImg = (speaker: "A" | "B") => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1001,7 +1042,10 @@ function Step4Preview({ project }: { project: any }) {
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleBg} />
           <input ref={spkAImgRef} type="file" accept="image/*" className="hidden" onChange={handleSpeakerImg("A")} />
           <input ref={spkBImgRef} type="file" accept="image/*" className="hidden" onChange={handleSpeakerImg("B")} />
-          <button onClick={handleRecord} className={`px-2.5 py-1.5 rounded-lg border text-[10px] flex items-center gap-1 font-bold transition-all ${isRecording?"border-red-500 bg-red-500/20 text-red-400 animate-pulse":"border-white/10 text-gray-400 hover:text-white hover:bg-white/5"}`}>
+          <button onClick={() => canvasContainerRef.current?.requestFullscreen().catch(()=>{})} title="Fullscreen canvas (then use Record)" className="px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-400 hover:text-white hover:bg-white/5 text-[10px] flex items-center gap-1 font-medium">
+            <LayoutTemplate className="w-3 h-3" /> Full
+          </button>
+          <button onClick={handleRecord} title={isRecording ? "Stop recording" : "Record: canvas goes fullscreen then pick 'This Tab' to capture only the video"} className={`px-2.5 py-1.5 rounded-lg border text-[10px] flex items-center gap-1 font-bold transition-all ${isRecording?"border-red-500 bg-red-500/20 text-red-400 animate-pulse":"border-white/10 text-gray-400 hover:text-white hover:bg-white/5"}`}>
             {isRecording ? <><Square className="w-3 h-3" /> Stop</> : <><Video className="w-3 h-3" /> Record</>}
           </button>
           <button onClick={()=>{ const a=document.createElement("a"); a.href=bg; a.download="background.jpg"; a.click(); }} className="px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-400 hover:text-white hover:bg-white/5 text-[10px] flex items-center gap-1 font-medium">
@@ -1111,7 +1155,7 @@ function Step4Preview({ project }: { project: any }) {
         </AnimatePresence>
 
         {/* Canvas — always 16:9, never shrinks */}
-        <div className="w-full aspect-video relative rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black sub-canvas-root">
+        <div ref={canvasContainerRef} className="w-full aspect-video relative rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black sub-canvas-root">
           {/* Background */}
           <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${bg})`, opacity: cfg.bgOpacity / 100 }} />
           <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.25) 0%, transparent 30%, transparent 60%, rgba(0,0,0,0.4) 100%)" }} />
@@ -1274,29 +1318,26 @@ function SubtitleText({ text, wordIdx, isSpeaking, textClass, subMode, isNarrato
   }
 
   // 2-line rolling mode: show current CHUNK_SIZE-word window, words appear one by one
+  // No AnimatePresence — it causes blank flash when chunk key changes.
+  // Instead: fade new chunk words in via opacity; the chunk container fades briefly on chunk change.
   if (subMode === "word2") {
     const visibleCount = isSpeaking && wordIdx >= 0 ? Math.min(wordIdx, words.length) : 0;
-    const chunkIdx = Math.floor(Math.max(0, visibleCount - 1) / CHUNK_SIZE);
-    const chunkStart = chunkIdx * CHUNK_SIZE;
-    const chunkEnd = chunkStart + CHUNK_SIZE;
-    const chunkWords = words.slice(chunkStart, chunkEnd);
-    const wordsInChunk = visibleCount - chunkStart; // how many revealed in this chunk
     if (!isSpeaking || visibleCount === 0) {
       return <p className={`font-bold leading-snug${italic}${colorClass} ${textClass} opacity-0 select-none`}>{"\u00A0"}</p>;
     }
+    const chunkIdx = Math.floor(Math.max(0, visibleCount - 1) / CHUNK_SIZE);
+    const chunkStart = chunkIdx * CHUNK_SIZE;
+    const chunkWords = words.slice(chunkStart, chunkStart + CHUNK_SIZE);
+    const wordsInChunk = visibleCount - chunkStart; // how many revealed in this chunk
     return (
-      <AnimatePresence mode="wait">
-        <motion.p key={chunkIdx}
-          initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
-          transition={{ duration: 0.2 }}
-          className={`font-bold leading-snug${italic}${colorClass} ${textClass}`}>
-          {chunkWords.map((word, i) => (
-            <span key={i} className={`transition-opacity duration-150 ${i < wordsInChunk ? "opacity-100" : "opacity-0"}`}>
-              {word}{i < chunkWords.length - 1 ? " " : ""}
-            </span>
-          ))}
-        </motion.p>
-      </AnimatePresence>
+      <p key={chunkIdx} className={`font-bold leading-snug${italic}${colorClass} ${textClass}`}
+        style={{ animation: "subtitleChunkIn 0.18s ease" }}>
+        {chunkWords.map((word, i) => (
+          <span key={i} className={`transition-opacity duration-200 ${i < wordsInChunk ? "opacity-100" : "opacity-0"}`}>
+            {word}{i < chunkWords.length - 1 ? " " : ""}
+          </span>
+        ))}
+      </p>
     );
   }
 
@@ -1313,15 +1354,19 @@ function SubtitleText({ text, wordIdx, isSpeaking, textClass, subMode, isNarrato
   );
 }
 
-// ─── SUBTITLE BOX (draggable + resizable from edges) ───────────────────────────
+// ─── SUBTITLE BOX (draggable + resizable width & height) ───────────────────────
 function SubtitleBox({ cfg, setCfg, children, extraBottom = 0 }: { cfg: OverlayCfg; setCfg: React.Dispatch<React.SetStateAction<OverlayCfg>>; children: React.ReactNode; extraBottom?: number }) {
-  const startResize = (e: React.PointerEvent, side: "left" | "right") => {
-    e.stopPropagation();
-    e.preventDefault();
+  const getCanvas = (el: HTMLElement): HTMLElement | null => {
+    let c: HTMLElement | null = el;
+    while (c && !c.classList.contains("sub-canvas-root")) c = c.parentElement;
+    return c;
+  };
+
+  const startWidthResize = (e: React.PointerEvent, side: "left" | "right") => {
+    e.stopPropagation(); e.preventDefault();
     const startX = e.clientX;
     const startWidth = cfg.subWidth;
-    let canvas = e.currentTarget as HTMLElement;
-    while (canvas && !canvas.classList.contains("sub-canvas-root")) canvas = canvas.parentElement!;
+    const canvas = getCanvas(e.currentTarget as HTMLElement);
     const canvasWidth = canvas?.getBoundingClientRect().width || 800;
     const onMove = (me: PointerEvent) => {
       const dx = me.clientX - startX;
@@ -1334,20 +1379,45 @@ function SubtitleBox({ cfg, setCfg, children, extraBottom = 0 }: { cfg: OverlayC
     window.addEventListener("pointerup", onUp);
   };
 
+  const startHeightResize = (e: React.PointerEvent) => {
+    e.stopPropagation(); e.preventDefault();
+    const startY = e.clientY;
+    const startH = cfg.subHeight;
+    const onMove = (me: PointerEvent) => {
+      // Dragging up = bigger, down = smaller (bottom-anchored box)
+      const dy = startY - me.clientY;
+      const newH = Math.max(0, Math.min(400, startH + dy));
+      setCfg(c => ({ ...c, subHeight: Math.round(newH) }));
+    };
+    const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
   return (
-    <motion.div drag dragMomentum={false} className="absolute z-20 cursor-move"
-      style={{ bottom: `calc(${cfg.subBottom}% + ${extraBottom}px)`, left: "50%", transform: "translateX(-50%)", width: `${cfg.subWidth}%`, maxWidth: 720 }}>
-      {/* Left resize handle */}
-      <div className="absolute -left-3 top-0 bottom-0 w-4 cursor-ew-resize z-30 flex items-center justify-center group"
-        onPointerDown={e => startResize(e, "left")}>
-        <div className="w-1 h-8 rounded-full bg-white/20 group-hover:bg-white/60 transition-colors" />
+    <motion.div drag dragMomentum={false} className="absolute z-20 cursor-move group/subbox"
+      style={{ bottom: `calc(${cfg.subBottom}% + ${extraBottom}px)`, left: "50%", transform: "translateX(-50%)", width: `${cfg.subWidth}%`, maxWidth: 900 }}>
+
+      {/* ── Width handles (left & right sides) ── */}
+      <div className="absolute -left-4 top-0 bottom-0 w-5 cursor-ew-resize z-30 flex items-center justify-center"
+        onPointerDown={e => startWidthResize(e, "left")}>
+        <div className="w-1.5 h-10 rounded-full bg-white/40 group-hover/subbox:bg-white/80 transition-colors shadow-lg" />
       </div>
-      {/* Right resize handle */}
-      <div className="absolute -right-3 top-0 bottom-0 w-4 cursor-ew-resize z-30 flex items-center justify-center group"
-        onPointerDown={e => startResize(e, "right")}>
-        <div className="w-1 h-8 rounded-full bg-white/20 group-hover:bg-white/60 transition-colors" />
+      <div className="absolute -right-4 top-0 bottom-0 w-5 cursor-ew-resize z-30 flex items-center justify-center"
+        onPointerDown={e => startWidthResize(e, "right")}>
+        <div className="w-1.5 h-10 rounded-full bg-white/40 group-hover/subbox:bg-white/80 transition-colors shadow-lg" />
       </div>
-      {children}
+
+      {/* ── Height handle (top edge — drag up to grow, down to shrink) ── */}
+      <div className="absolute -top-4 left-0 right-0 h-5 cursor-ns-resize z-30 flex items-center justify-center"
+        onPointerDown={startHeightResize}>
+        <div className="h-1.5 w-16 rounded-full bg-white/40 group-hover/subbox:bg-white/80 transition-colors shadow-lg" />
+      </div>
+
+      {/* Inner content — apply min-height when subHeight > 0 */}
+      <div style={cfg.subHeight > 0 ? { minHeight: cfg.subHeight } : undefined} className="flex flex-col justify-end overflow-hidden">
+        {children}
+      </div>
     </motion.div>
   );
 }
