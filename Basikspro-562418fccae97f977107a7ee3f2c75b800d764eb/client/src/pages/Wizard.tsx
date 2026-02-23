@@ -1148,23 +1148,34 @@ function splitSentences(text: string): string[] {
   return parts.map(s => s.trim()).filter(Boolean);
 }
 
-const NARRATOR_BOX_H: Record<string, string> = { small: "4.5em", medium: "6em", large: "8.5em" };
+function SubtitleText({ text, wordIdx, isSpeaking, textClass, subMode, isNarrator }: { text: string; wordIdx: number; isSpeaking: boolean; textClass: string; subMode?: "word" | "line"; isNarrator?: boolean; textSize?: string }) {
+  const sentences = splitSentences(text);
+  const words = text.split(" ");
 
-function SubtitleText({ text, wordIdx, isSpeaking, textClass, subMode, isNarrator, textSize }: { text: string; wordIdx: number; isSpeaking: boolean; textClass: string; subMode?: "word" | "line"; isNarrator?: boolean; textSize?: string }) {
-  // Narrator: show full text at once in a fixed-height scrollable container
+  // Narrator: always line-by-line subtitle style (italic), same sync as speakers
   if (isNarrator) {
+    if (!isSpeaking || wordIdx < 0 || sentences.length === 0) {
+      return <p className={`font-bold leading-snug italic ${textClass} opacity-0 select-none`}>{"\u00A0"}</p>;
+    }
+    let cumWords = 0;
+    let sentIdx = sentences.length - 1;
+    for (let i = 0; i < sentences.length; i++) {
+      cumWords += sentences[i].split(" ").length;
+      if (wordIdx <= cumWords) { sentIdx = i; break; }
+    }
     return (
-      <div style={{ height: NARRATOR_BOX_H[textSize || "medium"], overflowY: "auto", scrollbarWidth: "none" }}>
-        <p className={`font-bold leading-snug italic ${textClass}`}>{text}</p>
-      </div>
+      <AnimatePresence mode="wait">
+        <motion.p key={sentIdx} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.2 }}
+          className={`font-bold leading-snug italic ${textClass}`}>
+          {sentences[sentIdx]}
+        </motion.p>
+      </AnimatePresence>
     );
   }
 
-  const words = text.split(" ");
-
+  // Line-by-line mode for speakers
   if (subMode === "line") {
-    const sentences = splitSentences(text);
-    // Speaker not speaking yet: show nothing
     if (!isSpeaking || wordIdx < 0 || sentences.length === 0) {
       return <p className={`font-bold leading-snug ${textClass} opacity-0 select-none`}>{sentences[0] || "\u00A0"}</p>;
     }
