@@ -524,6 +524,7 @@ function Step3Audio({ project, onNext }: { project: any; onNext: () => void }) {
   const [voiceB, setVoiceB] = useState(project.speakerBVoice || voices[1]?.id);
   const [voiceN, setVoiceN] = useState(project.speakerNarratorVoice || voices[2]?.id);
   const [generating, setGenerating] = useState<Set<number>>(new Set());
+  const [failed, setFailed] = useState<Set<number>>(new Set());
   const [genProgress, setGenProgress] = useState(0);
   const [genBusy, setGenBusy] = useState(false);
   const [playingId, setPlayingId] = useState<number | null>(null);
@@ -546,11 +547,15 @@ function Step3Audio({ project, onNext }: { project: any; onNext: () => void }) {
 
   const genOne = async (dialogueId: number) => {
     setGenerating(prev => new Set(prev).add(dialogueId));
+    setFailed(prev => { const s = new Set(prev); s.delete(dialogueId); return s; });
     try {
-      await fetch(buildUrl(api.ai.generateAudio.path, { id: dialogueId }), {
+      const res = await fetch(buildUrl(api.ai.generateAudio.path, { id: dialogueId }), {
         method: "POST", headers: { "Content-Type": "application/json" }, body: "{}", credentials: "include",
       });
+      if (!res.ok) throw new Error("failed");
       queryClient.invalidateQueries({ queryKey: [api.projects.get.path, project.id] });
+    } catch {
+      setFailed(prev => new Set(prev).add(dialogueId));
     } finally {
       setGenerating(prev => { const s = new Set(prev); s.delete(dialogueId); return s; });
     }
@@ -685,23 +690,34 @@ function Step3Audio({ project, onNext }: { project: any; onNext: () => void }) {
       <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
         {sortedDialogues.map((d: any) => {
           const isGen = generating.has(d.id);
+          const isFail = failed.has(d.id);
           const isPlay = playingId === d.id;
-          const borderCol = d.speaker==="A" ? "border-indigo-500/20 bg-indigo-500/[0.03]" : d.speaker==="B" ? "border-cyan-500/20 bg-cyan-500/[0.03]" : "border-amber-500/20 bg-amber-500/[0.03]";
+          const borderCol = isFail
+            ? "border-red-500/40 bg-red-500/[0.04]"
+            : d.speaker==="A" ? "border-indigo-500/20 bg-indigo-500/[0.03]" : d.speaker==="B" ? "border-cyan-500/20 bg-cyan-500/[0.03]" : "border-amber-500/20 bg-amber-500/[0.03]";
           const badgeCol = d.speaker==="A" ? "bg-indigo-500/20 text-indigo-400" : d.speaker==="B" ? "bg-cyan-500/20 text-cyan-400" : "bg-amber-500/20 text-amber-400";
           return (
             <div key={d.id} className={`flex items-center gap-2 p-2.5 rounded-xl border glass-panel text-xs ${borderCol}`}>
               <div className={`w-5 h-5 rounded-full flex items-center justify-center font-bold shrink-0 ${badgeCol}`}>{d.speaker}</div>
               <p className="text-gray-300 flex-1 line-clamp-1">{d.transcript || d.text}</p>
-              <div className="flex items-center gap-1.5 shrink-0">
+              {isFail && <span className="text-red-400 text-[10px] font-bold shrink-0">Failed</span>}
+              <div className="flex items-center gap-1 shrink-0">
                 {d.audioUrl && (
-                  <button onClick={() => playAudio(d)} className={`p-1 rounded-full ${isPlay?"bg-primary/30 text-primary":"text-gray-500 hover:text-white hover:bg-white/10"}`}>
+                  <button onClick={() => playAudio(d)} title="Play" className={`p-1 rounded-full ${isPlay?"bg-primary/30 text-primary":"text-gray-500 hover:text-white hover:bg-white/10"}`}>
                     {isPlay ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
                   </button>
                 )}
-                <button onClick={() => genOne(d.id)} disabled={isGen} className="p-1 rounded-full text-gray-500 hover:text-white hover:bg-white/10 disabled:opacity-40">
+                {d.audioUrl && (
+                  <a href={d.audioUrl} download={`${d.speaker}_${d.sequence ?? ""}.wav`} title="Download"
+                    className="p-1 rounded-full text-gray-500 hover:text-white hover:bg-white/10">
+                    <Download className="w-3 h-3" />
+                  </a>
+                )}
+                <button onClick={() => genOne(d.id)} disabled={isGen} title={isFail ? "Retry" : "Regenerate"}
+                  className={`p-1 rounded-full disabled:opacity-40 ${isFail ? "text-red-400 hover:text-red-300 hover:bg-red-500/10" : "text-gray-500 hover:text-white hover:bg-white/10"}`}>
                   {isGen ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
                 </button>
-                {d.audioUrl ? <Check className="w-3 h-3 text-green-400" /> : <span className="text-gray-600 text-[10px]">—</span>}
+                {!isFail && (d.audioUrl ? <Check className="w-3 h-3 text-green-400" /> : <span className="text-gray-600 text-[10px]">—</span>)}
               </div>
             </div>
           );
@@ -725,6 +741,7 @@ function Step4Preview({ project }: { project: any }) {
   const [idx, setIdx] = useState(0);
   const [phase, setPhase] = useState<Phase>("idle");
   const [countdown, setCountdown] = useState(0);
+  const [audioPlayFailed, setAudioPlayFailed] = useState(false);
   const [style, setStyle] = useState<1|2|3|4|5|6>(1);
   const [bg, setBg] = useState(project.backgroundImage || DEMO_BG);
   const [showSettings, setShowSettings] = useState(false);
@@ -759,10 +776,9 @@ function Step4Preview({ project }: { project: any }) {
   useEffect(() => {
     if (phase === "idle") return;
     if (phase === "speaking") {
-      // When audio exists, audio's onended handles advancement — don't tick timer
-      if (currentHasAudio) return;
+      // When audio exists AND hasn't failed, audio's onended handles advancement
+      if (currentHasAudio && !audioPlayFailed) return;
       if (countdown <= 0) {
-        // Narrator lines skip scoring
         if (currentIsNarrator) {
           const next = idx + 1;
           if (next >= dialogues.length) { setPhase("idle"); return; }
@@ -783,17 +799,18 @@ function Step4Preview({ project }: { project: any }) {
         if (next >= dialogues.length) { setPhase("idle"); return; }
         setIdx(next);
         setCountdown(dialogueDuration(dialogues[next].text));
+        setAudioPlayFailed(false);
         playTransition();
         setPhase("speaking");
       }, 5000);
       return () => clearTimeout(t);
     }
-  }, [phase, countdown, idx, currentIsNarrator, currentHasAudio, dialogues]);
+  }, [phase, countdown, idx, currentIsNarrator, currentHasAudio, dialogues, audioPlayFailed]);
 
   // ── Word-by-word subtitle reveal (only when no audio — audio uses timeupdate) ──
   useEffect(() => {
     if (wordTimerRef.current) clearInterval(wordTimerRef.current);
-    if (phase === "speaking" && current.text && !currentHasAudio) {
+    if (phase === "speaking" && current.text && (!currentHasAudio || audioPlayFailed)) {
       const words = current.text.split(" ");
       const totalSecs = dialogueDuration(current.text);
       const msPerWord = Math.max(150, (totalSecs * 1000) / words.length);
@@ -808,7 +825,7 @@ function Step4Preview({ project }: { project: any }) {
       setWordIdx(-1);
     }
     return () => { if (wordTimerRef.current) clearInterval(wordTimerRef.current); };
-  }, [phase, idx, currentHasAudio]);
+  }, [phase, idx, currentHasAudio, audioPlayFailed]);
 
   // ── Preview audio playback: play actual generated audio per dialogue ──
   useEffect(() => {
@@ -837,7 +854,9 @@ function Step4Preview({ project }: { project: any }) {
         setIdx(next); setCountdown(dialogueDuration(dialogues[next].text)); playTransition();
       } else { setPhase("scoring"); }
     };
-    audio.play().catch(() => { /* blocked or missing – timer fallback handles it */ });
+    // If audio fails to load or play is blocked, fall back to timer
+    audio.onerror = () => { previewAudioRef.current = null; setAudioPlayFailed(true); };
+    audio.play().catch(() => { previewAudioRef.current = null; setAudioPlayFailed(true); });
     return () => { audio.pause(); };
   }, [phase, idx]);
 
@@ -848,11 +867,12 @@ function Step4Preview({ project }: { project: any }) {
       setPhase("idle"); return;
     }
     if (!dialogues[idx]) return;
+    setAudioPlayFailed(false);
     setCountdown(dialogueDuration(dialogues[idx].text));
     setPhase("speaking");
   };
-  const handlePrev = () => { setPhase("idle"); setIdx(i => Math.max(0, i-1)); };
-  const handleNext = () => { setPhase("idle"); setIdx(i => Math.min(dialogues.length-1, i+1)); };
+  const handlePrev = () => { setAudioPlayFailed(false); setPhase("idle"); setIdx(i => Math.max(0, i-1)); };
+  const handleNext = () => { setAudioPlayFailed(false); setPhase("idle"); setIdx(i => Math.min(dialogues.length-1, i+1)); };
 
   const handleBg = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -1148,36 +1168,16 @@ function splitSentences(text: string): string[] {
   return parts.map(s => s.trim()).filter(Boolean);
 }
 
-function SubtitleText({ text, wordIdx, isSpeaking, textClass, subMode, isNarrator }: { text: string; wordIdx: number; isSpeaking: boolean; textClass: string; subMode?: "word" | "line"; isNarrator?: boolean; textSize?: string }) {
+function SubtitleText({ text, wordIdx, isSpeaking, textClass, subMode, isNarrator }: { text: string; wordIdx: number; isSpeaking: boolean; textClass: string; subMode?: "word" | "line"; isNarrator?: boolean }) {
   const sentences = splitSentences(text);
   const words = text.split(" ");
+  const italic = isNarrator ? " italic" : "";
 
-  // Narrator: always line-by-line subtitle style (italic), same sync as speakers
-  if (isNarrator) {
+  // Line-by-line mode — narrator defaults to line unless word is explicitly chosen
+  const useLineMode = subMode === "line" || (isNarrator && subMode !== "word");
+  if (useLineMode) {
     if (!isSpeaking || wordIdx < 0 || sentences.length === 0) {
-      return <p className={`font-bold leading-snug italic ${textClass} opacity-0 select-none`}>{"\u00A0"}</p>;
-    }
-    let cumWords = 0;
-    let sentIdx = sentences.length - 1;
-    for (let i = 0; i < sentences.length; i++) {
-      cumWords += sentences[i].split(" ").length;
-      if (wordIdx <= cumWords) { sentIdx = i; break; }
-    }
-    return (
-      <AnimatePresence mode="wait">
-        <motion.p key={sentIdx} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
-          transition={{ duration: 0.2 }}
-          className={`font-bold leading-snug italic ${textClass}`}>
-          {sentences[sentIdx]}
-        </motion.p>
-      </AnimatePresence>
-    );
-  }
-
-  // Line-by-line mode for speakers
-  if (subMode === "line") {
-    if (!isSpeaking || wordIdx < 0 || sentences.length === 0) {
-      return <p className={`font-bold leading-snug ${textClass} opacity-0 select-none`}>{sentences[0] || "\u00A0"}</p>;
+      return <p className={`font-bold leading-snug${italic} ${textClass} opacity-0 select-none`}>{"\u00A0"}</p>;
     }
     let cumWords = 0;
     let sentIdx = sentences.length - 1;
@@ -1189,17 +1189,17 @@ function SubtitleText({ text, wordIdx, isSpeaking, textClass, subMode, isNarrato
       <AnimatePresence mode="wait">
         <motion.p key={sentIdx} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.18 }}
-          className={`font-bold leading-snug ${textClass}`}>
+          className={`font-bold leading-snug${italic} ${textClass}`}>
           {sentences[sentIdx]}
         </motion.p>
       </AnimatePresence>
     );
   }
 
-  // Word-by-word mode for speakers: 0 words until audio starts
+  // Word-by-word mode: 0 words until audio/timer starts
   const visibleCount = isSpeaking && wordIdx >= 0 ? Math.min(wordIdx, words.length) : 0;
   return (
-    <p className={`font-bold leading-snug ${textClass}`}>
+    <p className={`font-bold leading-snug${italic} ${textClass}`}>
       {words.map((word, i) => (
         <span key={i} className={`transition-opacity duration-150 ${i < visibleCount ? "opacity-100" : "opacity-0"}`}>
           {word}{i < words.length - 1 ? " " : ""}
@@ -1300,7 +1300,7 @@ function Style1({ project, current, isA, isNarrator, cfg, timerSeconds, isSpeaki
               style={{ padding: cfg.textSize==="small"?"10px 16px":cfg.textSize==="large"?"18px 28px":"14px 22px", backgroundColor: isNarrator ? `rgba(69,26,3,${cfg.subBgOpacity/100})` : `rgba(10,10,20,${cfg.subBgOpacity/100})` }}>
               <div className={`absolute -bottom-2.5 ${isNarrator?"left-1/2 -translate-x-1/2":isA?"left-10":"right-10"} w-5 h-5 rotate-45 border-b border-r ${isNarrator?"border-amber-500/30":"border-white/10"}`} style={{ backgroundColor: isNarrator ? `rgba(69,26,3,${cfg.subBgOpacity/100})` : `rgba(10,10,20,${cfg.subBgOpacity/100})` }} />
               {isNarrator && <div className="flex items-center gap-1.5 mb-1 justify-center"><div className="w-1.5 h-1.5 rounded-full bg-amber-400" /><span className="text-[9px] font-bold tracking-wider uppercase text-amber-400">{project.speakerNarratorName}</span></div>}
-              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white text-center ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} textSize={cfg.textSize} />
+              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white text-center ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} />
             </motion.div>
           </AnimatePresence>
         </SubtitleBox>
@@ -1350,7 +1350,7 @@ function Style2({ project, current, isA, isNarrator, cfg, timerSeconds, isSpeaki
               className={`backdrop-blur-xl border rounded-2xl shadow-2xl ${BOX_PAD[cfg.textSize]} ${isNarrator ? "border-amber-500/20" : "border-white/10"}`}
               style={{ backgroundColor: isNarrator ? `rgba(69,26,3,${cfg.subBgOpacity/100})` : `rgba(0,0,0,${cfg.subBgOpacity/100})` }}>
               <div className="flex items-center gap-1.5 mb-1"><div className={`w-2 h-2 rounded-full ${isNarrator?"bg-amber-400":isA?"bg-blue-400":"bg-rose-400"}`}/><span className={`text-[10px] font-bold tracking-wider ${isNarrator?"text-amber-400":isA?"text-blue-400":"text-rose-400"}`}>{isNarrator?project.speakerNarratorName:isA?project.speakerAName:project.speakerBName}</span></div>
-              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={TEXT_SIZES[cfg.textSize]} subMode={cfg.subMode} isNarrator={isNarrator} textSize={cfg.textSize} />
+              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={TEXT_SIZES[cfg.textSize]} subMode={cfg.subMode} isNarrator={isNarrator} />
             </motion.div>
           </AnimatePresence>
         </SubtitleBox>
@@ -1378,7 +1378,7 @@ function Style3({ project, current, isA, isNarrator, cfg, timerSeconds, isSpeaki
               <p className="text-white font-black text-sm">{activeName}</p>
               <p className="text-white/70 text-[10px] font-bold tracking-wider">{activeRole}</p>
             </div>
-            {cfg.showTranscript&&current.text&&<div className="flex-1 backdrop-blur px-4 py-2 flex items-center" style={{backgroundColor:`rgba(10,10,20,${cfg.subBgOpacity/100})`}}><SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white font-semibold leading-snug ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} textSize={cfg.textSize} /></div>}
+            {cfg.showTranscript&&current.text&&<div className="flex-1 backdrop-blur px-4 py-2 flex items-center" style={{backgroundColor:`rgba(10,10,20,${cfg.subBgOpacity/100})`}}><SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white font-semibold leading-snug ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} /></div>}
           </div>
           {cfg.showScores&&<div className="flex text-xs">
             <div className="bg-blue-800/90 px-4 py-1 flex items-center gap-2"><span className="text-blue-200 font-bold">{project.speakerAName}</span><span className="text-white font-black tabular-nums">{totA.toFixed(1)}</span></div>
@@ -1434,7 +1434,7 @@ function Style4({ project, current, isA, isNarrator, cfg, timerSeconds, isSpeaki
               className={`${BOX_PAD[cfg.textSize]} rounded-xl border shadow-2xl backdrop-blur-lg ${isNarrator?"border-amber-500/30":isA?"border-blue-500/30":"border-rose-500/30"}`}
               style={{ backgroundColor: isNarrator?`rgba(69,26,3,${cfg.subBgOpacity/100})`:isA?`rgba(3,15,69,${cfg.subBgOpacity/100})`:`rgba(69,3,15,${cfg.subBgOpacity/100})` }}>
               <div className="flex items-center gap-1.5 mb-1"><div className={`w-1.5 h-1.5 rounded-full ${isNarrator?"bg-amber-400":isA?"bg-blue-400":"bg-rose-400"}`}/><span className={`text-[9px] font-bold tracking-wider uppercase ${isNarrator?"text-amber-400":isA?"text-blue-400":"text-rose-400"}`}>{isNarrator?project.speakerNarratorName:isA?project.speakerAName:project.speakerBName}</span></div>
-              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white leading-snug ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} textSize={cfg.textSize} />
+              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white leading-snug ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} />
             </motion.div>
           </AnimatePresence>
         </SubtitleBox>
@@ -1527,7 +1527,7 @@ function Style5({ project, current, isA, isNarrator, cfg, timerSeconds, isSpeaki
                   {isNarrator ? project.speakerNarratorName : isA ? project.speakerAName : project.speakerBName}
                 </span>
               </div>
-              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} textSize={cfg.textSize} />
+              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} />
             </motion.div>
           </AnimatePresence>
         </SubtitleBox>
@@ -1609,7 +1609,7 @@ function Style6({ project, current, isA, isNarrator, cfg, timerSeconds, isSpeaki
             <motion.div key={current.text} initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}
               className={`${BOX_PAD[cfg.textSize]} rounded-2xl shadow-2xl backdrop-blur-xl border ${isNarrator ? "border-amber-500/30" : isA ? "border-blue-500/30" : "border-rose-500/30"}`}
               style={{ backgroundColor: `rgba(0,0,0,${cfg.subBgOpacity / 100})` }}>
-              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white text-center ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} textSize={cfg.textSize} />
+              <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white text-center ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} />
             </motion.div>
           </AnimatePresence>
         </SubtitleBox>
