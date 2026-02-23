@@ -69,6 +69,14 @@ function genScores(text: string) {
 }
 function dialogueDuration(text: string) { return Math.max(5, Math.min(45, Math.round(text.split(/\s+/).length / 2.5))); }
 function fmt(s: number) { const v = Math.max(0, s); return `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`; }
+function hexToRgba(hex: string, alpha: number): string {
+  try {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  } catch { return `rgba(10,10,20,${alpha})`; }
+}
 
 // Web Audio tones — shared AudioContext to avoid autoplay policy issues
 let _ac: AudioContext | null = null;
@@ -758,7 +766,7 @@ function Step3Audio({ project, onNext }: { project: any; onNext: () => void }) {
 // ─── STEP 4: VIDEO PREVIEW ─────────────────────────────────────────────────────
 type Phase = "idle" | "speaking" | "scoring";
 type TextSize = "small" | "medium" | "large";
-interface OverlayCfg { roleA: string; roleB: string; textSize: TextSize; showScores: boolean; showTimer: boolean; showTopic: boolean; showWaveform: boolean; showTranscript: boolean; showNarrator: boolean; bgOpacity: number; subBottom: number; subWidth: number; subHeight: number; subBgOpacity: number; speakerAImage: string; speakerBImage: string; subMode: "word" | "word2" | "line"; }
+interface OverlayCfg { roleA: string; roleB: string; textSize: TextSize; showScores: boolean; showTimer: boolean; showTopic: boolean; showWaveform: boolean; showTranscript: boolean; showNarrator: boolean; bgOpacity: number; subBottom: number; subWidth: number; subHeight: number; subBgOpacity: number; speakerAImage: string; speakerBImage: string; subMode: "word" | "word2" | "line"; subColor: string; subBorderColor: string; narratorColor: string; narratorBorderColor: string; }
 
 function Step4Preview({ project }: { project: any }) {
   const dialogues: any[] = project.dialogues || [];
@@ -774,7 +782,7 @@ function Step4Preview({ project }: { project: any }) {
   const [bg, setBg] = useState(project.backgroundImage || DEMO_BG);
   const [showSettings, setShowSettings] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [cfg, setCfg] = useState<OverlayCfg>({ roleA: "SUPPORTER", roleB: "OPPONENT", textSize: "medium", showScores: true, showTimer: true, showTopic: true, showWaveform: true, showTranscript: true, showNarrator: true, bgOpacity: 100, subBottom: 12, subWidth: 80, subHeight: 0, subBgOpacity: 80, speakerAImage: "", speakerBImage: "", subMode: "word" });
+  const [cfg, setCfg] = useState<OverlayCfg>({ roleA: "SUPPORTER", roleB: "OPPONENT", textSize: "medium", showScores: true, showTimer: true, showTopic: true, showWaveform: true, showTranscript: true, showNarrator: true, bgOpacity: 100, subBottom: 12, subWidth: 80, subHeight: 0, subBgOpacity: 80, speakerAImage: "", speakerBImage: "", subMode: "word", subColor: "#0a0a14", subBorderColor: "#ffffff", narratorColor: "#451a03", narratorBorderColor: "#f59e0b" });
   const [wordIdx, setWordIdx] = useState(-1);
   const [audioRemaining, setAudioRemaining] = useState(0);
   const wordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1156,7 +1164,40 @@ function Step4Preview({ project }: { project: any }) {
                     </button>
                   ))}
                 </div>
-                <p className="text-[9px] text-gray-600">Drag box edges to resize width</p>
+                <p className="text-[9px] text-gray-600">Hover box to show resize handles</p>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Colors</p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div>
+                    <p className="text-[9px] text-gray-500 mb-0.5">Sub BG</p>
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/5 border border-white/10">
+                      <input type="color" value={cfg.subColor} onChange={e => set("subColor", e.target.value)} className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0" />
+                      <span className="text-[9px] text-gray-400 font-mono">{cfg.subColor}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-gray-500 mb-0.5">Sub Border</p>
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/5 border border-white/10">
+                      <input type="color" value={cfg.subBorderColor} onChange={e => set("subBorderColor", e.target.value)} className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0" />
+                      <span className="text-[9px] text-gray-400 font-mono">{cfg.subBorderColor}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-gray-500 mb-0.5">Narrator BG</p>
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/5 border border-white/10">
+                      <input type="color" value={cfg.narratorColor} onChange={e => set("narratorColor", e.target.value)} className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0" />
+                      <span className="text-[9px] text-gray-400 font-mono">{cfg.narratorColor}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-gray-500 mb-0.5">Narrator Border</p>
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/5 border border-white/10">
+                      <input type="color" value={cfg.narratorBorderColor} onChange={e => set("narratorBorderColor", e.target.value)} className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0" />
+                      <span className="text-[9px] text-gray-400 font-mono">{cfg.narratorBorderColor}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div className="space-y-1.5">
                 <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Visibility</p>
@@ -1412,7 +1453,7 @@ function SubtitleBox({ cfg, setCfg, children, extraBottom = 0 }: { cfg: OverlayC
       const dx = me.clientX - startX;
       const dxPct = (dx / canvasWidth) * 100;
       const newW = Math.max(15, Math.min(100, startWidth + (side === "right" ? dxPct * 2 : -dxPct * 2)));
-      setCfg(c => ({ ...c, subWidth: Math.round(newW) }));
+      setCfg(c => ({ ...c, subWidth: +newW.toFixed(1) }));
     };
     const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); };
     window.addEventListener("pointermove", onMove);
@@ -1427,18 +1468,16 @@ function SubtitleBox({ cfg, setCfg, children, extraBottom = 0 }: { cfg: OverlayC
     const onMove = (me: PointerEvent) => {
       const dy = startY - me.clientY; // drag up = positive = taller
       const newH = Math.max(40, Math.min(500, startH + dy));
-      setCfg(c => ({ ...c, subHeight: Math.round(newH) }));
+      setCfg(c => ({ ...c, subHeight: +newH.toFixed(1) }));
     };
     const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   };
 
-  const grip = "w-5 h-5 rounded-sm bg-white/25 hover:bg-white/70 border border-white/30 hover:border-white/80 backdrop-blur-sm transition-all duration-150 shadow flex items-center justify-center cursor-nwse-resize";
-
   return (
     <motion.div drag dragMomentum={false} dragElastic={0}
-      className="absolute z-20"
+      className="absolute z-20 group"
       style={{ bottom: `calc(${cfg.subBottom}% + ${extraBottom}px)`, left: "50%", translateX: "-50%", width: `${cfg.subWidth}%`, maxWidth: 960 }}>
 
       {/* Content wrapper with optional min-height */}
@@ -1447,29 +1486,31 @@ function SubtitleBox({ cfg, setCfg, children, extraBottom = 0 }: { cfg: OverlayC
 
         {children}
 
-        {/* ── Top-center height handle ── drag up = taller, down = shorter */}
+        {/* ── Top-center height handle ── hidden until box is hovered */}
         <div
-          className="absolute top-1 left-1/2 -translate-x-1/2 z-40 cursor-ns-resize"
+          className="absolute top-1 left-1/2 -translate-x-1/2 z-40 cursor-ns-resize opacity-0 group-hover:opacity-100 transition-opacity duration-200"
           onPointerDown={startHeightResize}
           style={{ touchAction: "none" }}>
-          <div className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-md bg-white/15 hover:bg-white/40 border border-white/20 hover:border-white/60 backdrop-blur-sm transition-all shadow">
-            <div className="w-6 h-0.5 rounded-full bg-white/70" />
-            <div className="w-4 h-0.5 rounded-full bg-white/50" />
+          <div className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-md bg-white/30 hover:bg-white/60 border border-white/40 hover:border-white/80 backdrop-blur-sm transition-all shadow">
+            <div className="w-6 h-0.5 rounded-full bg-white/90" />
+            <div className="w-4 h-0.5 rounded-full bg-white/70" />
           </div>
         </div>
 
-        {/* ── Bottom-left corner: width resize left ── */}
-        <div className={`absolute bottom-1 left-1 z-40 ${grip}`}
+        {/* ── Bottom-left corner: width resize left ── hidden until hover */}
+        <div
+          className="absolute bottom-1 left-1 z-40 w-5 h-5 rounded-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/30 hover:bg-white/70 border border-white/40 hover:border-white/80 backdrop-blur-sm shadow flex items-center justify-center"
           onPointerDown={e => startWidthResize(e, "left")}
           style={{ touchAction: "none", cursor: "nesw-resize" }}>
-          <svg width="8" height="8" viewBox="0 0 8 8" className="text-white/80"><path d="M0 8 L8 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M0 4 L4 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/></svg>
+          <svg width="8" height="8" viewBox="0 0 8 8" className="text-white"><path d="M0 8 L8 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M0 4 L4 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/></svg>
         </div>
 
-        {/* ── Bottom-right corner: width resize right ── */}
-        <div className={`absolute bottom-1 right-1 z-40 ${grip}`}
+        {/* ── Bottom-right corner: width resize right ── hidden until hover */}
+        <div
+          className="absolute bottom-1 right-1 z-40 w-5 h-5 rounded-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/30 hover:bg-white/70 border border-white/40 hover:border-white/80 backdrop-blur-sm shadow flex items-center justify-center"
           onPointerDown={e => startWidthResize(e, "right")}
           style={{ touchAction: "none", cursor: "nwse-resize" }}>
-          <svg width="8" height="8" viewBox="0 0 8 8" className="text-white/80"><path d="M8 8 L0 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M8 4 L4 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/></svg>
+          <svg width="8" height="8" viewBox="0 0 8 8" className="text-white"><path d="M8 8 L0 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M8 4 L4 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/></svg>
         </div>
       </div>
     </motion.div>
@@ -1524,9 +1565,9 @@ function Style1({ project, current, isA, isNarrator, cfg, timerSeconds, isSpeaki
         <SubtitleBox cfg={cfg} setCfg={setCfg}>
           <AnimatePresence mode="wait">
             <motion.div key={current.text} initial={{opacity:0,y:12,scale:0.97}} animate={{opacity:1,y:0,scale:1}} exit={{opacity:0,y:-8,scale:0.97}}
-              className={`relative backdrop-blur-md rounded-2xl shadow-2xl border ${isNarrator ? "border-amber-500/30" : "border-white/10"}`}
-              style={{ padding: cfg.textSize==="small"?"10px 16px":cfg.textSize==="large"?"18px 28px":"14px 22px", backgroundColor: isNarrator ? `rgba(69,26,3,${cfg.subBgOpacity/100})` : `rgba(10,10,20,${cfg.subBgOpacity/100})` }}>
-              <div className={`absolute -bottom-2.5 ${isNarrator?"left-1/2 -translate-x-1/2":isA?"left-10":"right-10"} w-5 h-5 rotate-45 border-b border-r ${isNarrator?"border-amber-500/30":"border-white/10"}`} style={{ backgroundColor: isNarrator ? `rgba(69,26,3,${cfg.subBgOpacity/100})` : `rgba(10,10,20,${cfg.subBgOpacity/100})` }} />
+              className="relative backdrop-blur-md rounded-2xl shadow-2xl border"
+              style={{ padding: cfg.textSize==="small"?"10px 16px":cfg.textSize==="large"?"18px 28px":"14px 22px", backgroundColor: hexToRgba(isNarrator ? cfg.narratorColor : cfg.subColor, cfg.subBgOpacity/100), borderColor: hexToRgba(isNarrator ? cfg.narratorBorderColor : cfg.subBorderColor, 0.3) }}>
+              <div className={`absolute -bottom-2.5 ${isNarrator?"left-1/2 -translate-x-1/2":isA?"left-10":"right-10"} w-5 h-5 rotate-45 border-b border-r`} style={{ backgroundColor: hexToRgba(isNarrator ? cfg.narratorColor : cfg.subColor, cfg.subBgOpacity/100), borderColor: hexToRgba(isNarrator ? cfg.narratorBorderColor : cfg.subBorderColor, 0.3) }} />
               {isNarrator && <div className="flex items-center gap-1.5 mb-1 justify-center"><div className="w-1.5 h-1.5 rounded-full bg-amber-400" /><span className="text-[9px] font-bold tracking-wider uppercase text-amber-400">{project.speakerNarratorName}</span></div>}
               <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white text-center ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} />
             </motion.div>
@@ -1575,8 +1616,8 @@ function Style2({ project, current, isA, isNarrator, cfg, timerSeconds, isSpeaki
         <SubtitleBox cfg={cfg} setCfg={setCfg} extraBottom={44}>
           <AnimatePresence mode="wait">
             <motion.div key={current.text} initial={{opacity:0,scale:0.97}} animate={{opacity:1,scale:1}} exit={{opacity:0,scale:0.97}}
-              className={`backdrop-blur-xl border rounded-2xl shadow-2xl ${BOX_PAD[cfg.textSize]} ${isNarrator ? "border-amber-500/20" : "border-white/10"}`}
-              style={{ backgroundColor: isNarrator ? `rgba(69,26,3,${cfg.subBgOpacity/100})` : `rgba(0,0,0,${cfg.subBgOpacity/100})` }}>
+              className={`backdrop-blur-xl border rounded-2xl shadow-2xl ${BOX_PAD[cfg.textSize]}`}
+              style={{ backgroundColor: hexToRgba(isNarrator ? cfg.narratorColor : cfg.subColor, cfg.subBgOpacity/100), borderColor: hexToRgba(isNarrator ? cfg.narratorBorderColor : cfg.subBorderColor, 0.3) }}>
               <div className="flex items-center gap-1.5 mb-1"><div className={`w-2 h-2 rounded-full ${isNarrator?"bg-amber-400":isA?"bg-blue-400":"bg-rose-400"}`}/><span className={`text-[10px] font-bold tracking-wider ${isNarrator?"text-amber-400":isA?"text-blue-400":"text-rose-400"}`}>{isNarrator?project.speakerNarratorName:isA?project.speakerAName:project.speakerBName}</span></div>
               <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={TEXT_SIZES[cfg.textSize]} subMode={cfg.subMode} isNarrator={isNarrator} />
             </motion.div>
@@ -1606,7 +1647,7 @@ function Style3({ project, current, isA, isNarrator, cfg, timerSeconds, isSpeaki
               <p className="text-white font-black text-sm">{activeName}</p>
               <p className="text-white/70 text-[10px] font-bold tracking-wider">{activeRole}</p>
             </div>
-            {cfg.showTranscript&&current.text&&<div className="flex-1 backdrop-blur px-4 py-2 flex items-center" style={{backgroundColor:`rgba(10,10,20,${cfg.subBgOpacity/100})`}}><SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white font-semibold leading-snug ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} /></div>}
+            {cfg.showTranscript&&current.text&&<div className="flex-1 backdrop-blur px-4 py-2 flex items-center" style={{backgroundColor:hexToRgba(isNarrator?cfg.narratorColor:cfg.subColor,cfg.subBgOpacity/100)}}><SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white font-semibold leading-snug ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} /></div>}
           </div>
           {cfg.showScores&&<div className="flex text-xs">
             <div className="bg-blue-800/90 px-4 py-1 flex items-center gap-2"><span className="text-blue-200 font-bold">{project.speakerAName}</span><span className="text-white font-black tabular-nums">{totA.toFixed(1)}</span></div>
@@ -1659,8 +1700,8 @@ function Style4({ project, current, isA, isNarrator, cfg, timerSeconds, isSpeaki
         <SubtitleBox cfg={cfg} setCfg={setCfg}>
           <AnimatePresence mode="wait">
             <motion.div key={current.text} initial={{opacity:0,y:15}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-15}}
-              className={`${BOX_PAD[cfg.textSize]} rounded-xl border shadow-2xl backdrop-blur-lg ${isNarrator?"border-amber-500/30":isA?"border-blue-500/30":"border-rose-500/30"}`}
-              style={{ backgroundColor: isNarrator?`rgba(69,26,3,${cfg.subBgOpacity/100})`:isA?`rgba(3,15,69,${cfg.subBgOpacity/100})`:`rgba(69,3,15,${cfg.subBgOpacity/100})` }}>
+              className={`${BOX_PAD[cfg.textSize]} rounded-xl border shadow-2xl backdrop-blur-lg`}
+              style={{ backgroundColor: hexToRgba(isNarrator?cfg.narratorColor:cfg.subColor, cfg.subBgOpacity/100), borderColor: hexToRgba(isNarrator?cfg.narratorBorderColor:cfg.subBorderColor, 0.3) }}>
               <div className="flex items-center gap-1.5 mb-1"><div className={`w-1.5 h-1.5 rounded-full ${isNarrator?"bg-amber-400":isA?"bg-blue-400":"bg-rose-400"}`}/><span className={`text-[9px] font-bold tracking-wider uppercase ${isNarrator?"text-amber-400":isA?"text-blue-400":"text-rose-400"}`}>{isNarrator?project.speakerNarratorName:isA?project.speakerAName:project.speakerBName}</span></div>
               <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white leading-snug ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} />
             </motion.div>
@@ -1747,8 +1788,8 @@ function Style5({ project, current, isA, isNarrator, cfg, timerSeconds, isSpeaki
         <SubtitleBox cfg={cfg} setCfg={setCfg}>
           <AnimatePresence mode="wait">
             <motion.div key={current.text} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
-              className={`${BOX_PAD[cfg.textSize]} rounded-2xl shadow-2xl backdrop-blur-xl border ${isNarrator ? "border-amber-500/30" : isA ? "border-blue-500/30" : "border-rose-500/30"}`}
-              style={{ backgroundColor: isNarrator ? `rgba(69,26,3,${cfg.subBgOpacity / 100})` : isA ? `rgba(3,15,69,${cfg.subBgOpacity / 100})` : `rgba(69,3,15,${cfg.subBgOpacity / 100})` }}>
+              className={`${BOX_PAD[cfg.textSize]} rounded-2xl shadow-2xl backdrop-blur-xl border`}
+              style={{ backgroundColor: hexToRgba(isNarrator ? cfg.narratorColor : cfg.subColor, cfg.subBgOpacity / 100), borderColor: hexToRgba(isNarrator ? cfg.narratorBorderColor : cfg.subBorderColor, 0.3) }}>
               <div className="flex items-center gap-1.5 mb-1">
                 <div className={`w-2 h-2 rounded-full ${isNarrator ? "bg-amber-400" : isA ? "bg-blue-400" : "bg-rose-400"}`} />
                 <span className={`text-[10px] font-bold tracking-wider ${isNarrator ? "text-amber-400" : isA ? "text-blue-400" : "text-rose-400"}`}>
@@ -1835,8 +1876,8 @@ function Style6({ project, current, isA, isNarrator, cfg, timerSeconds, isSpeaki
         <SubtitleBox cfg={cfg} setCfg={setCfg}>
           <AnimatePresence mode="wait">
             <motion.div key={current.text} initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}
-              className={`${BOX_PAD[cfg.textSize]} rounded-2xl shadow-2xl backdrop-blur-xl border ${isNarrator ? "border-amber-500/30" : isA ? "border-blue-500/30" : "border-rose-500/30"}`}
-              style={{ backgroundColor: `rgba(0,0,0,${cfg.subBgOpacity / 100})` }}>
+              className={`${BOX_PAD[cfg.textSize]} rounded-2xl shadow-2xl backdrop-blur-xl border`}
+              style={{ backgroundColor: hexToRgba(isNarrator ? cfg.narratorColor : cfg.subColor, cfg.subBgOpacity / 100), borderColor: hexToRgba(isNarrator ? cfg.narratorBorderColor : cfg.subBorderColor, 0.3) }}>
               <SubtitleText text={current.text} wordIdx={wordIdx} isSpeaking={isSpeaking} textClass={`text-white text-center ${TEXT_SIZES[cfg.textSize]}`} subMode={cfg.subMode} isNarrator={isNarrator} />
             </motion.div>
           </AnimatePresence>
