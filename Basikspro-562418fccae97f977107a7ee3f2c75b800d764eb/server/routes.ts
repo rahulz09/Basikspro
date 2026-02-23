@@ -194,7 +194,7 @@ export async function registerRoutes(
       const project = await storage.getProject(projectId);
       if (!project) return res.status(404).json({ message: "Project not found" });
 
-      const { context } = req.body as { context?: string };
+      const { context, withoutNarrator } = req.body as { context?: string; withoutNarrator?: boolean };
 
       // Map numeric duration (minutes) to number of argument rounds
       const durationMins = parseInt(project.duration) || 7;
@@ -208,10 +208,27 @@ export async function registerRoutes(
       else if (durationMins <= 30) rounds = 12;
       else rounds = 15;
 
-      const narratorName = project.speakerNarratorName || "Narrator";
       const contextSection = context ? `\n\nReference Context:\n${context.slice(0, 3000)}\nUse this context to inform the debate content.\n` : "";
 
-      const prompt = `Generate a ${durationMins}-minute debate script on the topic: "${project.topic}".${contextSection}
+      let prompt: string;
+      if (withoutNarrator) {
+        prompt = `Generate a ${durationMins}-minute debate script on the topic: "${project.topic}".${contextSection}
+The debate has two participants:
+- ${project.speakerAName} (Speaker A) - argues FOR the topic
+- ${project.speakerBName} (Speaker B) - argues AGAINST the topic
+
+Structure each debate round as:
+1. Speaker A: Their argument (3-6 sentences, substantive and detailed)
+2. Speaker B: Their counter-argument (3-6 sentences, substantive and detailed)
+
+Generate exactly ${rounds} such rounds. Do NOT include any narrator lines.
+
+Output ONLY a valid JSON array where each element has 'speaker' ('A' or 'B') and 'text'.
+Example: [{"speaker":"A","text":"..."},{"speaker":"B","text":"..."}]
+Do NOT include any markdown formatting. Just the raw JSON array.`;
+      } else {
+        const narratorName = project.speakerNarratorName || "Narrator";
+        prompt = `Generate a ${durationMins}-minute debate script on the topic: "${project.topic}".${contextSection}
 The debate has three participants:
 - ${project.speakerAName} (Speaker A) - argues FOR the topic
 - ${project.speakerBName} (Speaker B) - argues AGAINST the topic
@@ -227,6 +244,7 @@ Generate exactly ${rounds} such rounds.
 Output ONLY a valid JSON array where each element has 'speaker' ('A', 'B', or 'N') and 'text'.
 Example: [{"speaker":"N","text":"..."},{"speaker":"A","text":"..."},{"speaker":"B","text":"..."}]
 Do NOT include any markdown formatting. Just the raw JSON array.`;
+      }
 
       const response = await getGeminiClient().models.generateContent({
         model: project.model,

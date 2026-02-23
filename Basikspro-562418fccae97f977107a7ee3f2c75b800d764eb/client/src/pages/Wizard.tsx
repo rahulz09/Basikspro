@@ -70,10 +70,23 @@ function genScores(text: string) {
 function dialogueDuration(text: string) { return Math.max(5, Math.min(45, Math.round(text.split(/\s+/).length / 2.5))); }
 function fmt(s: number) { const v = Math.max(0, s); return `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`; }
 
-// Web Audio tones
+// Web Audio tones — shared AudioContext to avoid autoplay policy issues
+let _ac: AudioContext | null = null;
+function getAC(): AudioContext | null {
+  try {
+    if (!_ac) _ac = new (window.AudioContext || (window as any).webkitAudioContext)();
+    if (_ac.state === "suspended") _ac.resume().catch(() => {});
+    return _ac;
+  } catch { return null; }
+}
+// Call once on user gesture to unlock audio
+function unlockAudio() {
+  const ac = getAC();
+  if (ac && ac.state === "suspended") ac.resume().catch(() => {});
+}
 function playTone(freq: number, dur: number, vol = 0.25, type: OscillatorType = "sine") {
   try {
-    const ac = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const ac = getAC(); if (!ac) return;
     const osc = ac.createOscillator(); const g = ac.createGain();
     osc.type = type; osc.frequency.value = freq;
     g.gain.setValueAtTime(vol, ac.currentTime);
@@ -359,6 +372,7 @@ function Step2Script({ project, onNext }: { project: any; onNext: () => void }) 
   const [editText, setEditText] = useState("");
   const [rewritingId, setRewritingId] = useState<number | null>(null);
   const [rwInstr, setRwInstr] = useState("");
+  const [withoutNarrator, setWithoutNarrator] = useState(false);
 
   const saveNames = () => {
     const updates: any = { id: project.id };
@@ -374,12 +388,19 @@ function Step2Script({ project, onNext }: { project: any; onNext: () => void }) 
         <FileText className="w-10 h-10 text-primary" />
       </div>
       <h2 className="text-2xl font-display font-bold text-white mb-3">Generate Script</h2>
-      <p className="text-muted-foreground mb-7 text-sm leading-relaxed">AI will draft the debate with narrator intro for each argument round.</p>
-      <div className="glass-panel rounded-xl px-5 py-3 mb-7 border border-primary/10">
+      <p className="text-muted-foreground mb-7 text-sm leading-relaxed">AI will draft the debate{withoutNarrator ? " (Speaker A & B only, no narrator)" : " with narrator intro for each argument round"}.</p>
+      <div className="glass-panel rounded-xl px-5 py-3 mb-5 border border-primary/10">
         <p className="text-primary text-xs font-bold tracking-wider uppercase mb-0.5">Topic</p>
         <p className="text-white text-sm font-medium">"{project.topic}"</p>
       </div>
-      <button onClick={() => generateScript.mutateAsync({ projectId: project.id, context: localStorage.getItem(`ctx-${project.id}`) || undefined })} disabled={generateScript.isPending} className="px-7 py-3.5 bg-gradient-to-r from-primary to-indigo-600 text-white font-bold rounded-xl flex items-center gap-2 hover:shadow-[0_0_25px_rgba(124,58,237,0.4)] transition-shadow">
+      {/* Narrator toggle */}
+      <label className="flex items-center gap-2.5 cursor-pointer mb-7 select-none">
+        <button onClick={() => setWithoutNarrator(v => !v)} className={`w-9 h-[18px] rounded-full relative transition-all ${withoutNarrator ? "bg-amber-500" : "bg-white/20"}`}>
+          <div className={`w-3.5 h-3.5 bg-white rounded-full absolute top-[2px] transition-all ${withoutNarrator ? "left-[18px]" : "left-[2px]"}`} />
+        </button>
+        <span className="text-sm text-gray-300">Without Narrator <span className="text-gray-500 text-xs">(A & B conversation only)</span></span>
+      </label>
+      <button onClick={() => generateScript.mutateAsync({ projectId: project.id, context: localStorage.getItem(`ctx-${project.id}`) || undefined, withoutNarrator })} disabled={generateScript.isPending} className="px-7 py-3.5 bg-gradient-to-r from-primary to-indigo-600 text-white font-bold rounded-xl flex items-center gap-2 hover:shadow-[0_0_25px_rgba(124,58,237,0.4)] transition-shadow">
         {generateScript.isPending ? <><Loader2 className="w-5 h-5 animate-spin" /> Generating...</> : <><Wand2 className="w-5 h-5" /> Generate Script with AI</>}
       </button>
     </div>
@@ -463,7 +484,14 @@ function Step2Script({ project, onNext }: { project: any; onNext: () => void }) 
             <span className="w-4 h-4 rounded-full bg-amber-500/30 text-amber-300 flex items-center justify-center font-bold text-[9px]">N</span>
             <input value={narrator} onChange={e=>setNarrator(e.target.value)} onBlur={saveNames} className="bg-transparent text-amber-300 text-xs font-bold w-16 focus:outline-none" />
           </div>
-          <button onClick={() => generateScript.mutateAsync({ projectId: project.id, context: localStorage.getItem(`ctx-${project.id}`) || undefined })} disabled={generateScript.isPending} className="px-3 py-2 text-xs border border-white/20 text-gray-300 rounded-xl hover:bg-white/5 flex items-center gap-1.5">
+          {/* Without narrator toggle */}
+          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+            <button onClick={() => setWithoutNarrator(v => !v)} className={`w-8 h-[16px] rounded-full relative transition-all ${withoutNarrator ? "bg-amber-500" : "bg-white/20"}`}>
+              <div className={`w-3 h-3 bg-white rounded-full absolute top-[2px] transition-all ${withoutNarrator ? "left-[18px]" : "left-[2px]"}`} />
+            </button>
+            <span className="text-[10px] text-gray-400">No Narrator</span>
+          </label>
+          <button onClick={() => generateScript.mutateAsync({ projectId: project.id, context: localStorage.getItem(`ctx-${project.id}`) || undefined, withoutNarrator })} disabled={generateScript.isPending} className="px-3 py-2 text-xs border border-white/20 text-gray-300 rounded-xl hover:bg-white/5 flex items-center gap-1.5">
             {generateScript.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />} Regenerate
           </button>
           <button onClick={onNext} className="px-5 py-2 bg-white text-black font-bold rounded-xl text-sm hover:bg-gray-200 flex items-center gap-1.5">Next <ArrowRight className="w-4 h-4" /></button>
@@ -730,7 +758,7 @@ function Step3Audio({ project, onNext }: { project: any; onNext: () => void }) {
 // ─── STEP 4: VIDEO PREVIEW ─────────────────────────────────────────────────────
 type Phase = "idle" | "speaking" | "scoring";
 type TextSize = "small" | "medium" | "large";
-interface OverlayCfg { roleA: string; roleB: string; textSize: TextSize; showScores: boolean; showTimer: boolean; showTopic: boolean; showWaveform: boolean; showTranscript: boolean; bgOpacity: number; subBottom: number; subWidth: number; subBgOpacity: number; speakerAImage: string; speakerBImage: string; subMode: "word" | "line"; }
+interface OverlayCfg { roleA: string; roleB: string; textSize: TextSize; showScores: boolean; showTimer: boolean; showTopic: boolean; showWaveform: boolean; showTranscript: boolean; showNarrator: boolean; bgOpacity: number; subBottom: number; subWidth: number; subBgOpacity: number; speakerAImage: string; speakerBImage: string; subMode: "word" | "line"; }
 
 function Step4Preview({ project }: { project: any }) {
   const dialogues: any[] = project.dialogues || [];
@@ -746,7 +774,7 @@ function Step4Preview({ project }: { project: any }) {
   const [bg, setBg] = useState(project.backgroundImage || DEMO_BG);
   const [showSettings, setShowSettings] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [cfg, setCfg] = useState<OverlayCfg>({ roleA: "SUPPORTER", roleB: "OPPONENT", textSize: "medium", showScores: true, showTimer: true, showTopic: true, showWaveform: true, showTranscript: true, bgOpacity: 100, subBottom: 12, subWidth: 80, subBgOpacity: 80, speakerAImage: "", speakerBImage: "", subMode: "word" });
+  const [cfg, setCfg] = useState<OverlayCfg>({ roleA: "SUPPORTER", roleB: "OPPONENT", textSize: "medium", showScores: true, showTimer: true, showTopic: true, showWaveform: true, showTranscript: true, showNarrator: true, bgOpacity: 100, subBottom: 12, subWidth: 80, subBgOpacity: 80, speakerAImage: "", speakerBImage: "", subMode: "word" });
   const [wordIdx, setWordIdx] = useState(-1);
   const [audioRemaining, setAudioRemaining] = useState(0);
   const wordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -773,17 +801,43 @@ function Step4Preview({ project }: { project: any }) {
   const currentIsNarrator = dialogues[idx]?.speaker === "N";
   const currentHasAudio = !!dialogues[idx]?.audioUrl;
 
+  // Find next non-narrator index (when narrator is hidden)
+  const nextNonNarr = (from: number) => {
+    let i = from;
+    while (i < dialogues.length && !cfg.showNarrator && dialogues[i]?.speaker === "N") i++;
+    return i;
+  };
+
   useEffect(() => {
     if (phase === "idle") return;
+    // If narrator is hidden and current is narrator — skip immediately
+    if (phase === "speaking" && currentIsNarrator && !cfg.showNarrator) {
+      const next = nextNonNarr(idx + 1);
+      if (next >= dialogues.length) { setPhase("idle"); return; }
+      setIdx(next);
+      setCountdown(dialogueDuration(dialogues[next].text));
+      setAudioPlayFailed(false);
+      return;
+    }
     if (phase === "speaking") {
       // When audio exists AND hasn't failed, audio's onended handles advancement
       if (currentHasAudio && !audioPlayFailed) return;
       if (countdown <= 0) {
         if (currentIsNarrator) {
-          const next = idx + 1;
+          const next = nextNonNarr(idx + 1);
           if (next >= dialogues.length) { setPhase("idle"); return; }
           setIdx(next);
           setCountdown(dialogueDuration(dialogues[next].text));
+          playTransition();
+          return;
+        }
+        // Skip scoring phase if scores are disabled
+        if (!cfg.showScores) {
+          const next = nextNonNarr(idx + 1);
+          if (next >= dialogues.length) { setPhase("idle"); return; }
+          setIdx(next);
+          setCountdown(dialogueDuration(dialogues[next].text));
+          setAudioPlayFailed(false);
           playTransition();
           return;
         }
@@ -795,7 +849,7 @@ function Step4Preview({ project }: { project: any }) {
     }
     if (phase === "scoring") {
       const t = setTimeout(() => {
-        const next = idx + 1;
+        const next = nextNonNarr(idx + 1);
         if (next >= dialogues.length) { setPhase("idle"); return; }
         setIdx(next);
         setCountdown(dialogueDuration(dialogues[next].text));
@@ -805,7 +859,7 @@ function Step4Preview({ project }: { project: any }) {
       }, 5000);
       return () => clearTimeout(t);
     }
-  }, [phase, countdown, idx, currentIsNarrator, currentHasAudio, dialogues, audioPlayFailed]);
+  }, [phase, countdown, idx, currentIsNarrator, currentHasAudio, dialogues, audioPlayFailed, cfg.showNarrator, cfg.showScores]);
 
   // ── Word-by-word subtitle reveal (only when no audio — audio uses timeupdate) ──
   useEffect(() => {
@@ -848,8 +902,9 @@ function Step4Preview({ project }: { project: any }) {
     audio.onended = () => {
       setAudioRemaining(0);
       setWordIdx(words.length);
-      const next = idx + 1;
       if (isN) {
+        // Find next non-narrator index (cfg.showNarrator check done in phase engine but audio onended runs here)
+        let next = idx + 1;
         if (next >= dialogues.length) { setPhase("idle"); return; }
         setIdx(next); setCountdown(dialogueDuration(dialogues[next].text)); playTransition();
       } else { setPhase("scoring"); }
@@ -861,6 +916,7 @@ function Step4Preview({ project }: { project: any }) {
   }, [phase, idx]);
 
   const handlePlay = () => {
+    unlockAudio(); // unlock AudioContext on user gesture
     if (phase !== "idle") {
       previewAudioRef.current?.pause();
       previewAudioRef.current = null;
@@ -871,8 +927,23 @@ function Step4Preview({ project }: { project: any }) {
     setCountdown(dialogueDuration(dialogues[idx].text));
     setPhase("speaking");
   };
-  const handlePrev = () => { setAudioPlayFailed(false); setPhase("idle"); setIdx(i => Math.max(0, i-1)); };
-  const handleNext = () => { setAudioPlayFailed(false); setPhase("idle"); setIdx(i => Math.min(dialogues.length-1, i+1)); };
+  const handlePrev = () => {
+    setAudioPlayFailed(false); setPhase("idle");
+    setIdx(i => {
+      let ni = Math.max(0, i - 1);
+      // skip narrators when hidden
+      while (ni > 0 && !cfg.showNarrator && dialogues[ni]?.speaker === "N") ni--;
+      return ni;
+    });
+  };
+  const handleNext = () => {
+    setAudioPlayFailed(false); setPhase("idle");
+    setIdx(i => {
+      let ni = Math.min(dialogues.length - 1, i + 1);
+      while (ni < dialogues.length - 1 && !cfg.showNarrator && dialogues[ni]?.speaker === "N") ni++;
+      return ni;
+    });
+  };
 
   const handleBg = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -1003,7 +1074,7 @@ function Step4Preview({ project }: { project: any }) {
               </div>
               <div className="space-y-1.5">
                 <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Visibility</p>
-                {([["showScores","Scores"],["showTopic","Topic"],["showTimer","Timer"],["showWaveform","Waveform"],["showTranscript","Transcript"]] as [keyof OverlayCfg, string][]).map(([k,label])=>(
+                {([["showScores","Scores"],["showNarrator","Narrator"],["showTopic","Topic"],["showTimer","Timer"],["showWaveform","Waveform"],["showTranscript","Transcript"]] as [keyof OverlayCfg, string][]).map(([k,label])=>(
                   <label key={k} className="flex items-center justify-between cursor-pointer py-0.5">
                     <span className="text-xs text-gray-300">{label}</span>
                     <button onClick={()=>set(k,!cfg[k] as any)} className={`w-9 h-[18px] rounded-full relative transition-all ${cfg[k]?"bg-primary":"bg-white/20"}`}>
@@ -1172,12 +1243,14 @@ function SubtitleText({ text, wordIdx, isSpeaking, textClass, subMode, isNarrato
   const sentences = splitSentences(text);
   const words = text.split(" ");
   const italic = isNarrator ? " italic" : "";
+  // Narrator uses amber text; speakers use whatever textClass provides (usually text-white)
+  const colorClass = isNarrator ? " text-amber-200" : "";
 
   // Line-by-line mode — narrator defaults to line unless word is explicitly chosen
   const useLineMode = subMode === "line" || (isNarrator && subMode !== "word");
   if (useLineMode) {
     if (!isSpeaking || wordIdx < 0 || sentences.length === 0) {
-      return <p className={`font-bold leading-snug${italic} ${textClass} opacity-0 select-none`}>{"\u00A0"}</p>;
+      return <p className={`font-bold leading-snug${italic}${colorClass} ${textClass} opacity-0 select-none`}>{"\u00A0"}</p>;
     }
     let cumWords = 0;
     let sentIdx = sentences.length - 1;
@@ -1189,7 +1262,7 @@ function SubtitleText({ text, wordIdx, isSpeaking, textClass, subMode, isNarrato
       <AnimatePresence mode="wait">
         <motion.p key={sentIdx} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.18 }}
-          className={`font-bold leading-snug${italic} ${textClass}`}>
+          className={`font-bold leading-snug${italic}${colorClass} ${textClass}`}>
           {sentences[sentIdx]}
         </motion.p>
       </AnimatePresence>
@@ -1199,7 +1272,7 @@ function SubtitleText({ text, wordIdx, isSpeaking, textClass, subMode, isNarrato
   // Word-by-word mode: 0 words until audio/timer starts
   const visibleCount = isSpeaking && wordIdx >= 0 ? Math.min(wordIdx, words.length) : 0;
   return (
-    <p className={`font-bold leading-snug${italic} ${textClass}`}>
+    <p className={`font-bold leading-snug${italic}${colorClass} ${textClass}`}>
       {words.map((word, i) => (
         <span key={i} className={`transition-opacity duration-150 ${i < visibleCount ? "opacity-100" : "opacity-0"}`}>
           {word}{i < words.length - 1 ? " " : ""}
