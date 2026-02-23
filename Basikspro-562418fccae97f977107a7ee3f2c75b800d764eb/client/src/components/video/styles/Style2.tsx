@@ -20,7 +20,7 @@ export function Style2({ project, current, isA, isNarrator, cfg, timerSeconds, i
 
       {cfg.showWaveform && isSpeaking && (
         <motion.div drag dragMomentum={false} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`absolute top-1/2 -translate-y-1/2 z-20 cursor-move ${isA ? "left-5" : "right-5"}`}>
-          <WaveformBars color={isA ? "bg-blue-400" : "bg-rose-400"} />
+          <WaveformBars color={isA ? "bg-blue-400" : "bg-rose-400"} variant={cfg.waveformStyle} />
         </motion.div>
       )}
 
@@ -30,13 +30,13 @@ export function Style2({ project, current, isA, isNarrator, cfg, timerSeconds, i
             <div className={`flex-1 flex items-center gap-3 px-5 py-2.5 bg-blue-700/85 backdrop-blur-sm transition-all ${isA && isSpeaking ? "brightness-110" : ""}`}>
               <span className="text-white font-black text-xl tabular-nums">{totA.toFixed(1)}</span>
               <div><p className="text-white font-bold text-xs">{project.speakerAName}</p><p className="text-blue-200 text-[10px] tracking-wider">{cfg.roleA}</p></div>
-              {isA && isSpeaking && cfg.showWaveform && <div className="ml-auto"><WaveformBars color="bg-blue-200" /></div>}
+              {isA && isSpeaking && cfg.showWaveform && <div className="ml-auto"><WaveformBars color="bg-blue-200" variant={cfg.waveformStyle} /></div>}
             </div>
             <div className="w-px bg-white/10" />
             <div className={`flex-1 flex items-center gap-3 px-5 py-2.5 bg-rose-700/85 backdrop-blur-sm flex-row-reverse transition-all ${!isA && isSpeaking ? "brightness-110" : ""}`}>
               <span className="text-white font-black text-xl tabular-nums">{totB.toFixed(1)}</span>
               <div className="text-right"><p className="text-white font-bold text-xs">{project.speakerBName}</p><p className="text-rose-200 text-[10px] tracking-wider">{cfg.roleB}</p></div>
-              {!isA && isSpeaking && cfg.showWaveform && <div className="mr-auto"><WaveformBars color="bg-rose-200" /></div>}
+              {!isA && isSpeaking && cfg.showWaveform && <div className="mr-auto"><WaveformBars color="bg-rose-200" variant={cfg.waveformStyle} /></div>}
             </div>
           </div>
         </motion.div>

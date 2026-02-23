@@ -13,6 +13,11 @@ export interface OverlayCfg {
   subMode: "word" | "word2" | "line";
   subColor: string; subBorderColor: string;
   narratorColor: string; narratorBorderColor: string;
+  // New options
+  scoreCardStyle: "grid" | "bar";
+  waveformStyle: "bars" | "pulse" | "line";
+  nameGap: number;
+  fontStyle: "impact" | "sans" | "serif" | "mono";
 }
 
 export interface CP {

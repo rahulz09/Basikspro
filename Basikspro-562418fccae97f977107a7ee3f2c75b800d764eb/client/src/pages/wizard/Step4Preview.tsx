@@ -15,6 +15,7 @@ import { Style3 } from "@/components/video/styles/Style3";
 import { Style4 } from "@/components/video/styles/Style4";
 import { Style5 } from "@/components/video/styles/Style5";
 import { Style6 } from "@/components/video/styles/Style6";
+import { Style7 } from "@/components/video/styles/Style7";
 
 export function Step4Preview({ project }: { project: any }) {
   const dialogues: any[] = project.dialogues || [];
@@ -31,7 +32,7 @@ export function Step4Preview({ project }: { project: any }) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [countdown, setCountdown] = useState(0);
   const [audioPlayFailed, setAudioPlayFailed] = useState(false);
-  const [style, setStyle] = useState<1|2|3|4|5|6>(1);
+  const [style, setStyle] = useState<1|2|3|4|5|6|7>(1);
   const [bg, setBg] = useState(project.backgroundImage || DEMO_BG);
   const [showSettings, setShowSettings] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -43,6 +44,7 @@ export function Step4Preview({ project }: { project: any }) {
     speakerAImage: "", speakerBImage: "",
     subMode: "word", subColor: "#0a0a14", subBorderColor: "#ffffff",
     narratorColor: "#451a03", narratorBorderColor: "#f59e0b",
+    scoreCardStyle: "bar", waveformStyle: "bars", nameGap: 16, fontStyle: "impact",
   });
   const [wordIdx, setWordIdx] = useState(-1);
   const [audioRemaining, setAudioRemaining] = useState(0);
@@ -302,7 +304,7 @@ export function Step4Preview({ project }: { project: any }) {
   };
 
   const set = <K extends keyof OverlayCfg>(k: K, v: OverlayCfg[K]) => setCfg(c => ({ ...c, [k]: v }));
-  const styleNames = ["", "Panel", "Bar", "News", "Arena", "Split", "Podcast"];
+  const styleNames = ["", "Panel", "Bar", "News", "Arena", "Split", "Podcast", "Debate"];
 
   const timerSeconds = phase !== "speaking" ? 0 : isNarrator ? 0 : (currentHasAudio && audioRemaining > 0 ? audioRemaining : countdown);
   const displayProject = { ...project, speakerAName: nameA, speakerBName: nameB, speakerNarratorName: nameN };
@@ -323,7 +325,7 @@ export function Step4Preview({ project }: { project: any }) {
         </div>
         <div className="flex items-center gap-1 flex-wrap">
           <div className="flex bg-black/40 rounded-lg border border-white/10 p-0.5 gap-0.5">
-            {([1,2,3,4,5,6] as const).map(s => (
+            {([1,2,3,4,5,6,7] as const).map(s => (
               <button key={s} onClick={() => setStyle(s)} className={`px-2.5 py-1 rounded-md text-[10px] font-bold transition-all ${style === s ? "bg-primary text-white shadow-md shadow-primary/30" : "text-gray-500 hover:text-white"}`}>
                 {styleNames[s]}
               </button>
@@ -478,6 +480,51 @@ export function Step4Preview({ project }: { project: any }) {
                 ))}
               </div>
 
+              {/* ── Score Card Style ── */}
+              <div className="space-y-1.5">
+                <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Score Card Style</p>
+                <div className="flex gap-1">
+                  {([["bar", "Horizontal Bar"], ["grid", "Grid Cards"]] as const).map(([m, label]) => (
+                    <button key={m} onClick={() => set("scoreCardStyle", m)} className={`flex-1 py-1 rounded-lg text-[10px] font-medium transition-all ${cfg.scoreCardStyle === m ? "bg-primary text-white" : "bg-white/10 text-gray-400 hover:text-white"}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Waveform Style ── */}
+              <div className="space-y-1.5">
+                <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Waveform Style</p>
+                <div className="flex gap-1">
+                  {([["bars", "Bars"], ["pulse", "Pulse"], ["line", "Wave"]] as const).map(([m, label]) => (
+                    <button key={m} onClick={() => set("waveformStyle", m)} className={`flex-1 py-1 rounded-lg text-[10px] font-medium transition-all ${cfg.waveformStyle === m ? "bg-primary text-white" : "bg-white/10 text-gray-400 hover:text-white"}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Font Style ── */}
+              <div className="space-y-1.5">
+                <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Font Style</p>
+                <div className="grid grid-cols-2 gap-1">
+                  {([["impact", "Impact"], ["sans", "Sans"], ["serif", "Serif"], ["mono", "Mono"]] as const).map(([m, label]) => (
+                    <button key={m} onClick={() => set("fontStyle", m)} className={`py-1 rounded-lg text-[10px] font-medium transition-all ${cfg.fontStyle === m ? "bg-primary text-white" : "bg-white/10 text-gray-400 hover:text-white"}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Name Gap (Debate style) ── */}
+              <div className="space-y-1.5">
+                <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Name Gap <span className="text-gray-600">(Debate style)</span></p>
+                <div className="flex items-center gap-2">
+                  <input type="range" min={0} max={80} value={cfg.nameGap} onChange={e => set("nameGap", parseInt(e.target.value))} className="flex-1 accent-primary h-1.5" />
+                  <span className="text-xs text-gray-400 tabular-nums w-8 text-right">{cfg.nameGap}px</span>
+                </div>
+              </div>
+
               <div className="space-y-1.5">
                 <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Speaker Images</p>
                 <p className="text-[9px] text-gray-500">Used in Split & Podcast styles</p>
@@ -512,6 +559,7 @@ export function Step4Preview({ project }: { project: any }) {
           {style === 4 && <Style4 {...canvasProps} />}
           {style === 5 && <Style5 {...canvasProps} />}
           {style === 6 && <Style6 {...canvasProps} />}
+          {style === 7 && <Style7 {...canvasProps} />}
 
           <AnimatePresence>
             {phase === "scoring" && scoreData[idx] && !isNarrator && (
@@ -521,6 +569,7 @@ export function Step4Preview({ project }: { project: any }) {
                 avg={scoreData[idx].avg} isA={isA}
                 totalA={totA} totalB={totB}
                 nameA={nameA} nameB={nameB}
+                style={cfg.scoreCardStyle}
               />
             )}
           </AnimatePresence>

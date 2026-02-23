@@ -34,7 +34,7 @@ export function Style4({ project, current, isA, isNarrator, cfg, timerSeconds, i
               <div className="w-full h-px bg-white/30 my-2" />
               <div className="text-white font-bold text-xs">{project.speakerAName}</div>
               <div className="text-blue-200 text-[9px] tracking-wider mt-0.5">{cfg.roleA}</div>
-              {cfg.showWaveform && isA && isSpeaking && <div className="mt-2 flex justify-center"><WaveformBars color="bg-white/70" /></div>}
+              {cfg.showWaveform && isA && isSpeaking && <div className="mt-2 flex justify-center"><WaveformBars color="bg-white/70" variant={cfg.waveformStyle} /></div>}
             </div>
           </motion.div>
           <motion.div drag dragMomentum={false} className="absolute right-4 top-1/2 -translate-y-1/2 z-20 cursor-move">
@@ -43,7 +43,7 @@ export function Style4({ project, current, isA, isNarrator, cfg, timerSeconds, i
               <div className="w-full h-px bg-white/30 my-2" />
               <div className="text-white font-bold text-xs">{project.speakerBName}</div>
               <div className="text-rose-200 text-[9px] tracking-wider mt-0.5">{cfg.roleB}</div>
-              {cfg.showWaveform && !isA && isSpeaking && <div className="mt-2 flex justify-center"><WaveformBars color="bg-white/70" /></div>}
+              {cfg.showWaveform && !isA && isSpeaking && <div className="mt-2 flex justify-center"><WaveformBars color="bg-white/70" variant={cfg.waveformStyle} /></div>}
             </div>
           </motion.div>
         </>

@@ -38,7 +38,7 @@ export function Style5({ project, current, isA, isNarrator, cfg, timerSeconds, i
             </div>
           </div>
           {isA && isSpeaking && !isNarrator && cfg.showWaveform && (
-            <div className="bg-blue-900/90 py-1.5 flex justify-center"><WaveformBars color="bg-blue-300" /></div>
+            <div className="bg-blue-900/90 py-1.5 flex justify-center"><WaveformBars color="bg-blue-300" variant={cfg.waveformStyle} /></div>
           )}
         </motion.div>
       </motion.div>
@@ -63,7 +63,7 @@ export function Style5({ project, current, isA, isNarrator, cfg, timerSeconds, i
             </div>
           </div>
           {!isA && isSpeaking && !isNarrator && cfg.showWaveform && (
-            <div className="bg-rose-900/90 py-1.5 flex justify-center"><WaveformBars color="bg-rose-300" /></div>
+            <div className="bg-rose-900/90 py-1.5 flex justify-center"><WaveformBars color="bg-rose-300" variant={cfg.waveformStyle} /></div>
           )}
         </motion.div>
       </motion.div>

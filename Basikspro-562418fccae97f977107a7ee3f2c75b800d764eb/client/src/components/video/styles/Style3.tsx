@@ -31,7 +31,7 @@ export function Style3({ project, current, isA, isNarrator, cfg, timerSeconds, i
 
       {cfg.showWaveform && isSpeaking && (
         <motion.div drag dragMomentum={false} className={`absolute top-1/2 -translate-y-1/2 z-20 cursor-move ${isA ? "left-5" : "right-5"}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <WaveformBars color={isA ? "bg-blue-400" : "bg-rose-400"} />
+          <WaveformBars color={isA ? "bg-blue-400" : "bg-rose-400"} variant={cfg.waveformStyle} />
         </motion.div>
       )}
 

@@ -50,7 +50,7 @@ export function Style6({ project, current, isA, isNarrator, cfg, timerSeconds, i
         </motion.div>
         {cfg.showWaveform && isSpeaking && (
           <div className="mt-3">
-            <WaveformBars color={isNarrator ? "bg-amber-400" : isA ? "bg-blue-400" : "bg-rose-400"} />
+            <WaveformBars color={isNarrator ? "bg-amber-400" : isA ? "bg-blue-400" : "bg-rose-400"} variant={cfg.waveformStyle} />
           </div>
         )}
       </motion.div>
