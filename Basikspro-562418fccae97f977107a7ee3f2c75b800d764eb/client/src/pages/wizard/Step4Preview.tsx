@@ -45,6 +45,7 @@ export function Step4Preview({ project }: { project: any }) {
     subMode: "word", subColor: "#0a0a14", subBorderColor: "#ffffff",
     narratorColor: "#451a03", narratorBorderColor: "#f59e0b",
     scoreCardStyle: "bar", waveformStyle: "bars", nameGap: 16, fontStyle: "impact",
+    colorA: "#4ade80", colorB: "#f472b6", nameGlowIntensity: 70, showArgTracker: true,
   });
   const [wordIdx, setWordIdx] = useState(-1);
   const [audioRemaining, setAudioRemaining] = useState(0);
@@ -470,6 +471,7 @@ export function Step4Preview({ project }: { project: any }) {
                   ["showWaveform", "Waveform"],
                   ["showTranscript", "Transcript"],
                   ["showPointerLine", "Pointer Line"],
+                  ["showArgTracker", "Arg. Tracker"],
                 ] as [keyof OverlayCfg, string][]).map(([k, label]) => (
                   <label key={k} className="flex items-center justify-between cursor-pointer py-0.5">
                     <span className="text-xs text-gray-300">{label}</span>
@@ -518,10 +520,36 @@ export function Step4Preview({ project }: { project: any }) {
 
               {/* ── Name Gap (Debate style) ── */}
               <div className="space-y-1.5">
-                <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Name Gap <span className="text-gray-600">(Debate style)</span></p>
+                <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Name Gap <span className="text-gray-600">(Debate)</span></p>
                 <div className="flex items-center gap-2">
                   <input type="range" min={0} max={80} value={cfg.nameGap} onChange={e => set("nameGap", parseInt(e.target.value))} className="flex-1 accent-primary h-1.5" />
                   <span className="text-xs text-gray-400 tabular-nums w-8 text-right">{cfg.nameGap}px</span>
+                </div>
+              </div>
+
+              {/* ── Debate Speaker Colors ── */}
+              <div className="space-y-1.5">
+                <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Debate Colors</p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div>
+                    <p className="text-[9px] text-gray-500 mb-0.5">Speaker A</p>
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/5 border border-white/10">
+                      <input type="color" value={cfg.colorA} onChange={e => set("colorA", e.target.value)} className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0" />
+                      <span className="text-[9px] text-gray-400 font-mono">{cfg.colorA}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-gray-500 mb-0.5">Speaker B</p>
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/5 border border-white/10">
+                      <input type="color" value={cfg.colorB} onChange={e => set("colorB", e.target.value)} className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0" />
+                      <span className="text-[9px] text-gray-400 font-mono">{cfg.colorB}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[9px] text-gray-500 w-14">Name Glow</span>
+                  <input type="range" min={0} max={100} value={cfg.nameGlowIntensity} onChange={e => set("nameGlowIntensity", parseInt(e.target.value))} className="flex-1 accent-primary h-1.5" />
+                  <span className="text-xs text-gray-400 tabular-nums w-8 text-right">{cfg.nameGlowIntensity}%</span>
                 </div>
               </div>
 

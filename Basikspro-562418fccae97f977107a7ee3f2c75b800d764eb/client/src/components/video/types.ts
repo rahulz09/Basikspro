@@ -18,6 +18,10 @@ export interface OverlayCfg {
   waveformStyle: "bars" | "pulse" | "line";
   nameGap: number;
   fontStyle: "impact" | "sans" | "serif" | "mono";
+  colorA: string;       // speaker A accent color, default "#4ade80"
+  colorB: string;       // speaker B accent color, default "#f472b6"
+  nameGlowIntensity: number; // 0-100
+  showArgTracker: boolean;
 }
 
 export interface CP {
