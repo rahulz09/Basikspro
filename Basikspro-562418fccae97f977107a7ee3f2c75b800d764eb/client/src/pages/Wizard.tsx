@@ -778,7 +778,8 @@ function Step4Preview({ project }: { project: any }) {
   const [wordIdx, setWordIdx] = useState(-1);
   const [audioRemaining, setAudioRemaining] = useState(0);
   const wordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Single persistent audio element — avoids race conditions when idx changes quickly
+  const previewAudioRef = useRef<HTMLAudioElement>(new Audio());
   const spkAImgRef = useRef<HTMLInputElement>(null);
   const spkBImgRef = useRef<HTMLInputElement>(null);
 
@@ -881,45 +882,67 @@ function Step4Preview({ project }: { project: any }) {
     return () => { if (wordTimerRef.current) clearInterval(wordTimerRef.current); };
   }, [phase, idx, currentHasAudio, audioPlayFailed]);
 
-  // ── Preview audio playback: play actual generated audio per dialogue ──
+  // ── Preview audio playback: reuse single persistent audio element ──
   useEffect(() => {
-    if (previewAudioRef.current) { previewAudioRef.current.pause(); previewAudioRef.current = null; }
+    const audio = previewAudioRef.current;
+    // Always stop previous playback when effect re-runs
+    audio.pause();
+    audio.ontimeupdate = null;
+    audio.onended = null;
+    audio.onerror = null;
     setAudioRemaining(0);
+
     if (phase !== "speaking") return;
     const dl = dialogues[idx];
     if (!dl?.audioUrl) return;
-    const audio = new Audio(dl.audioUrl);
-    previewAudioRef.current = audio;
+
     const isN = dl.speaker === "N";
     const words = dl.text.split(" ");
+
     audio.ontimeupdate = () => {
       const dur = audio.duration || 1;
       const ct = audio.currentTime;
       setAudioRemaining(Math.max(0, Math.round(dur - ct)));
-      // Sync word reveal with audio progress
       setWordIdx(Math.min(words.length, Math.ceil((ct / dur) * words.length)));
     };
     audio.onended = () => {
       setAudioRemaining(0);
       setWordIdx(words.length);
       if (isN) {
-        // Find next non-narrator index (cfg.showNarrator check done in phase engine but audio onended runs here)
         let next = idx + 1;
         if (next >= dialogues.length) { setPhase("idle"); return; }
         setIdx(next); setCountdown(dialogueDuration(dialogues[next].text)); playTransition();
       } else { setPhase("scoring"); }
     };
-    // If audio fails to load or play is blocked, fall back to timer
-    audio.onerror = () => { previewAudioRef.current = null; setAudioPlayFailed(true); };
-    audio.play().catch(() => { previewAudioRef.current = null; setAudioPlayFailed(true); });
-    return () => { audio.pause(); };
+    audio.onerror = () => { setAudioPlayFailed(true); };
+
+    // Change src and load — much more reliable than creating a new Audio() each time
+    if (audio.src !== dl.audioUrl) {
+      audio.src = dl.audioUrl;
+      audio.load();
+    } else {
+      audio.currentTime = 0;
+    }
+
+    // Small delay to let the browser settle before calling play()
+    // This prevents the race condition where cleanup runs before play resolves
+    const playTimer = setTimeout(() => {
+      audio.play().catch(() => { setAudioPlayFailed(true); });
+    }, 80);
+
+    return () => {
+      clearTimeout(playTimer);
+      audio.pause();
+      audio.ontimeupdate = null;
+      audio.onended = null;
+      audio.onerror = null;
+    };
   }, [phase, idx]);
 
   const handlePlay = () => {
     unlockAudio(); // unlock AudioContext on user gesture
     if (phase !== "idle") {
-      previewAudioRef.current?.pause();
-      previewAudioRef.current = null;
+      previewAudioRef.current.pause();
       setPhase("idle"); return;
     }
     if (!dialogues[idx]) return;
@@ -952,54 +975,70 @@ function Step4Preview({ project }: { project: any }) {
 
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
   const handleRecord = async () => {
     if (isRecording) { mediaRecRef.current?.stop(); return; }
+
+    // Safari doesn't support getDisplayMedia — show instructions
+    if (isSafari || !navigator.mediaDevices?.getDisplayMedia) {
+      const container = canvasContainerRef.current;
+      if (container && document.fullscreenEnabled) {
+        await container.requestFullscreen().catch(() => {});
+      }
+      alert("Safari me screen recording supported nahi hai browser se.\n\nSteps:\n1. Canvas fullscreen ho gaya hai\n2. Mac: QuickTime Player → File → New Screen Recording → canvas select karein\n3. iPhone/iPad: Control Centre → Screen Record button dabayein\n4. Debate play karein aur record karein");
+      if (phase === "idle") { unlockAudio(); setAudioPlayFailed(false); setCountdown(dialogueDuration(dialogues[idx]?.text || "")); setPhase("speaking"); }
+      return;
+    }
+
     try {
       // Enter fullscreen on just the canvas container so recording captures only the video canvas
       const container = canvasContainerRef.current;
       if (container && document.fullscreenEnabled) {
         await container.requestFullscreen().catch(() => {});
       }
-      // Capture display — user picks the tab/window; preferCurrentTab hint for Chrome
+
+      // Capture display — preferCurrentTab so user sees only this tab option
       const constraints: any = { video: { frameRate: 30 }, audio: false };
-      // preferCurrentTab hint for Chrome (no-op if unsupported)
       try { (constraints as any).preferCurrentTab = true; } catch {}
       const displayStream = await navigator.mediaDevices.getDisplayMedia(constraints);
 
-      // Also capture audio from the dialogue audio element if playing
+      // Mix in audio from dialogue audio element via Web Audio API
       const combinedTracks = [...displayStream.getTracks()];
-      if (previewAudioRef.current) {
-        try {
-          const ac = getAC();
-          if (ac) {
-            const dest = ac.createMediaStreamDestination();
-            const src = ac.createMediaElementSource(previewAudioRef.current);
-            src.connect(dest); src.connect(ac.destination);
-            dest.stream.getAudioTracks().forEach(t => combinedTracks.push(t));
-          }
-        } catch { /* audio capture not available */ }
-      }
+      try {
+        const ac = getAC();
+        if (ac) {
+          const dest = ac.createMediaStreamDestination();
+          const src = ac.createMediaElementSource(previewAudioRef.current);
+          src.connect(dest); src.connect(ac.destination);
+          dest.stream.getAudioTracks().forEach(t => combinedTracks.push(t));
+        }
+      } catch { /* audio capture not critical */ }
+
+      // Pick best supported mime type (Safari supports mp4 only, but we skip Safari above)
+      const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+        ? "video/webm;codecs=vp9,opus"
+        : MediaRecorder.isTypeSupported("video/mp4")
+          ? "video/mp4" : "video/webm";
 
       const finalStream = new MediaStream(combinedTracks);
-      const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
-        ? "video/webm;codecs=vp9,opus" : "video/webm";
       const rec = new MediaRecorder(finalStream, { mimeType, videoBitsPerSecond: 8_000_000 });
       const chunks: Blob[] = [];
       rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
       rec.onstop = () => {
         finalStream.getTracks().forEach(t => t.stop());
         if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+        const ext = mimeType.includes("mp4") ? "mp4" : "webm";
         const blob = new Blob(chunks, { type: mimeType });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = `debate_${Date.now()}.webm`;
+        a.download = `debate_${Date.now()}.${ext}`;
         a.click();
         setIsRecording(false);
       };
-      rec.start(500); // collect chunks every 500ms
+      rec.start(500);
       mediaRecRef.current = rec;
       setIsRecording(true);
-      // auto-play the debate when recording starts
       if (phase === "idle") { unlockAudio(); setAudioPlayFailed(false); setCountdown(dialogueDuration(dialogues[idx]?.text || "")); setPhase("speaking"); }
     } catch { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); }
   };
@@ -1354,39 +1393,40 @@ function SubtitleText({ text, wordIdx, isSpeaking, textClass, subMode, isNarrato
   );
 }
 
-// ─── SUBTITLE BOX (draggable + resizable width & height) ───────────────────────
+// ─── SUBTITLE BOX (draggable + corner-resizable) ───────────────────────────────
+// Handles are INSIDE the box so they're never clipped by canvas overflow:hidden
 function SubtitleBox({ cfg, setCfg, children, extraBottom = 0 }: { cfg: OverlayCfg; setCfg: React.Dispatch<React.SetStateAction<OverlayCfg>>; children: React.ReactNode; extraBottom?: number }) {
-  const getCanvas = (el: HTMLElement): HTMLElement | null => {
+  const getCanvasWidth = (el: HTMLElement): number => {
     let c: HTMLElement | null = el;
     while (c && !c.classList.contains("sub-canvas-root")) c = c.parentElement;
-    return c;
+    return c?.getBoundingClientRect().width || 800;
   };
 
+  // Width resize: drag bottom-left or bottom-right corner
   const startWidthResize = (e: React.PointerEvent, side: "left" | "right") => {
     e.stopPropagation(); e.preventDefault();
     const startX = e.clientX;
     const startWidth = cfg.subWidth;
-    const canvas = getCanvas(e.currentTarget as HTMLElement);
-    const canvasWidth = canvas?.getBoundingClientRect().width || 800;
+    const canvasWidth = getCanvasWidth(e.currentTarget as HTMLElement);
     const onMove = (me: PointerEvent) => {
       const dx = me.clientX - startX;
       const dxPct = (dx / canvasWidth) * 100;
-      const newWidth = Math.max(20, Math.min(100, startWidth + (side === "right" ? dxPct : -dxPct)));
-      setCfg(c => ({ ...c, subWidth: Math.round(newWidth) }));
+      const newW = Math.max(15, Math.min(100, startWidth + (side === "right" ? dxPct * 2 : -dxPct * 2)));
+      setCfg(c => ({ ...c, subWidth: Math.round(newW) }));
     };
     const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   };
 
+  // Height resize: drag top-center handle up/down
   const startHeightResize = (e: React.PointerEvent) => {
     e.stopPropagation(); e.preventDefault();
     const startY = e.clientY;
     const startH = cfg.subHeight;
     const onMove = (me: PointerEvent) => {
-      // Dragging up = bigger, down = smaller (bottom-anchored box)
-      const dy = startY - me.clientY;
-      const newH = Math.max(0, Math.min(400, startH + dy));
+      const dy = startY - me.clientY; // drag up = positive = taller
+      const newH = Math.max(40, Math.min(500, startH + dy));
       setCfg(c => ({ ...c, subHeight: Math.round(newH) }));
     };
     const onUp = () => { window.removeEventListener("pointermove", onMove); window.removeEventListener("pointerup", onUp); };
@@ -1394,29 +1434,43 @@ function SubtitleBox({ cfg, setCfg, children, extraBottom = 0 }: { cfg: OverlayC
     window.addEventListener("pointerup", onUp);
   };
 
+  const grip = "w-5 h-5 rounded-sm bg-white/25 hover:bg-white/70 border border-white/30 hover:border-white/80 backdrop-blur-sm transition-all duration-150 shadow flex items-center justify-center cursor-nwse-resize";
+
   return (
-    <motion.div drag dragMomentum={false} className="absolute z-20 cursor-move group/subbox"
-      style={{ bottom: `calc(${cfg.subBottom}% + ${extraBottom}px)`, left: "50%", transform: "translateX(-50%)", width: `${cfg.subWidth}%`, maxWidth: 900 }}>
+    <motion.div drag dragMomentum={false} dragElastic={0}
+      className="absolute z-20"
+      style={{ bottom: `calc(${cfg.subBottom}% + ${extraBottom}px)`, left: "50%", translateX: "-50%", width: `${cfg.subWidth}%`, maxWidth: 960 }}>
 
-      {/* ── Width handles (left & right sides) ── */}
-      <div className="absolute -left-4 top-0 bottom-0 w-5 cursor-ew-resize z-30 flex items-center justify-center"
-        onPointerDown={e => startWidthResize(e, "left")}>
-        <div className="w-1.5 h-10 rounded-full bg-white/40 group-hover/subbox:bg-white/80 transition-colors shadow-lg" />
-      </div>
-      <div className="absolute -right-4 top-0 bottom-0 w-5 cursor-ew-resize z-30 flex items-center justify-center"
-        onPointerDown={e => startWidthResize(e, "right")}>
-        <div className="w-1.5 h-10 rounded-full bg-white/40 group-hover/subbox:bg-white/80 transition-colors shadow-lg" />
-      </div>
+      {/* Content wrapper with optional min-height */}
+      <div className="relative cursor-move"
+        style={cfg.subHeight > 0 ? { minHeight: cfg.subHeight } : undefined}>
 
-      {/* ── Height handle (top edge — drag up to grow, down to shrink) ── */}
-      <div className="absolute -top-4 left-0 right-0 h-5 cursor-ns-resize z-30 flex items-center justify-center"
-        onPointerDown={startHeightResize}>
-        <div className="h-1.5 w-16 rounded-full bg-white/40 group-hover/subbox:bg-white/80 transition-colors shadow-lg" />
-      </div>
-
-      {/* Inner content — apply min-height when subHeight > 0 */}
-      <div style={cfg.subHeight > 0 ? { minHeight: cfg.subHeight } : undefined} className="flex flex-col justify-end overflow-hidden">
         {children}
+
+        {/* ── Top-center height handle ── drag up = taller, down = shorter */}
+        <div
+          className="absolute top-1 left-1/2 -translate-x-1/2 z-40 cursor-ns-resize"
+          onPointerDown={startHeightResize}
+          style={{ touchAction: "none" }}>
+          <div className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-md bg-white/15 hover:bg-white/40 border border-white/20 hover:border-white/60 backdrop-blur-sm transition-all shadow">
+            <div className="w-6 h-0.5 rounded-full bg-white/70" />
+            <div className="w-4 h-0.5 rounded-full bg-white/50" />
+          </div>
+        </div>
+
+        {/* ── Bottom-left corner: width resize left ── */}
+        <div className={`absolute bottom-1 left-1 z-40 ${grip}`}
+          onPointerDown={e => startWidthResize(e, "left")}
+          style={{ touchAction: "none", cursor: "nesw-resize" }}>
+          <svg width="8" height="8" viewBox="0 0 8 8" className="text-white/80"><path d="M0 8 L8 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M0 4 L4 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/></svg>
+        </div>
+
+        {/* ── Bottom-right corner: width resize right ── */}
+        <div className={`absolute bottom-1 right-1 z-40 ${grip}`}
+          onPointerDown={e => startWidthResize(e, "right")}
+          style={{ touchAction: "none", cursor: "nwse-resize" }}>
+          <svg width="8" height="8" viewBox="0 0 8 8" className="text-white/80"><path d="M8 8 L0 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M8 4 L4 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/></svg>
+        </div>
       </div>
     </motion.div>
   );
