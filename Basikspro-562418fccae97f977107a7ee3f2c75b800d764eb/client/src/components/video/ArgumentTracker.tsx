@@ -7,9 +7,10 @@ interface Props {
   side: "left" | "right";
   activeColor: string;
   inactiveColor: string;
+  size?: number; // px, default 12
 }
 
-export function ArgumentTracker({ dialogues, currentIdx, speaker, side, activeColor, inactiveColor }: Props) {
+export function ArgumentTracker({ dialogues, currentIdx, speaker, side, activeColor, inactiveColor, size = 12 }: Props) {
   const speakerDialogues = dialogues
     .map((d: any, i: number) => ({ ...d, _idx: i }))
     .filter((d: any) => d.speaker === speaker);
@@ -30,10 +31,11 @@ export function ArgumentTracker({ dialogues, currentIdx, speaker, side, activeCo
             className="relative"
           >
             <div
-              className={`w-3 h-3 rounded-sm transition-all duration-300 ${active ? "ring-2 ring-white/80 shadow-lg" : ""}`}
+              className={`rounded-sm transition-all duration-300 ${active ? "ring-2 ring-white/80 shadow-lg" : ""}`}
               style={{
+                width: size, height: size,
                 backgroundColor: completed || active ? activeColor : inactiveColor,
-                boxShadow: active ? `0 0 10px ${activeColor}` : "none",
+                boxShadow: active ? `0 0 ${size}px ${activeColor}` : "none",
               }}
             />
           </motion.div>

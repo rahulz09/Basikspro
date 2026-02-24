@@ -22,6 +22,7 @@ export interface OverlayCfg {
   colorB: string;       // speaker B accent color, default "#f472b6"
   nameGlowIntensity: number; // 0-100
   showArgTracker: boolean;
+  argTrackerSize: number; // px, default 12
 }
 
 export interface CP {

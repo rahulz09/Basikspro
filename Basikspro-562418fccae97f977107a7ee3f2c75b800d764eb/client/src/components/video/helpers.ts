@@ -31,12 +31,40 @@ export function genScores(text: string) {
 
 // ── Web Audio ──────────────────────────────────────────────────────────────────
 let _ac: AudioContext | null = null;
+let _mediaSource: MediaElementAudioSourceNode | null = null;
+let _analyser: AnalyserNode | null = null;
 
 export function getAC(): AudioContext | null {
   try {
     if (!_ac) _ac = new (window.AudioContext || (window as any).webkitAudioContext)();
     if (_ac.state === "suspended") _ac.resume().catch(() => {});
     return _ac;
+  } catch { return null; }
+}
+
+/** Create the MediaElementSource once and reuse — a single element can only be
+ *  connected to ONE AudioContext, so this must be shared with recording too. */
+export function getOrCreateMediaSource(el: HTMLAudioElement): MediaElementAudioSourceNode | null {
+  const ac = getAC(); if (!ac) return null;
+  if (_mediaSource) return _mediaSource;
+  try { _mediaSource = ac.createMediaElementSource(el); } catch { return null; }
+  return _mediaSource;
+}
+
+/** Get (or create) an AnalyserNode connected to the audio element.
+ *  Audio is routed: element → analyser → destination, so playback is unaffected. */
+export function getMediaAnalyser(el: HTMLAudioElement): AnalyserNode | null {
+  try {
+    const ac = getAC(); if (!ac) return null;
+    const src = getOrCreateMediaSource(el); if (!src) return null;
+    if (!_analyser) {
+      _analyser = ac.createAnalyser();
+      _analyser.fftSize = 256;
+      _analyser.smoothingTimeConstant = 0.75;
+      src.connect(_analyser);
+      _analyser.connect(ac.destination);
+    }
+    return _analyser;
   } catch { return null; }
 }
 

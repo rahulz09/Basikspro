@@ -124,6 +124,7 @@ export function Style7({ project, current, isA, isNarrator, cfg, timerSeconds, i
           speaker="A" side="left"
           activeColor={hexToRgba(colorA, 0.9)}
           inactiveColor={hexToRgba(colorA, 0.18)}
+          size={cfg.argTrackerSize ?? 12}
         />
       )}
 
@@ -134,6 +135,7 @@ export function Style7({ project, current, isA, isNarrator, cfg, timerSeconds, i
           speaker="B" side="right"
           activeColor={hexToRgba(colorB, 0.9)}
           inactiveColor={hexToRgba(colorB, 0.18)}
+          size={cfg.argTrackerSize ?? 12}
         />
       )}
 

@@ -7,7 +7,8 @@ import {
 import { useUpdateProject } from "@/hooks/use-projects";
 import { OverlayCfg, Phase, TextSize, CP } from "@/components/video/types";
 import { DEMO_BG, AI_MODELS } from "@/components/video/constants";
-import { dialogueDuration, fmt, genScores, getAC, unlockAudio, playTransition, playCountdownBeep } from "@/components/video/helpers";
+import { dialogueDuration, fmt, genScores, getAC, unlockAudio, playTransition, playCountdownBeep, getOrCreateMediaSource, getMediaAnalyser } from "@/components/video/helpers";
+import { AnalyserContext } from "@/components/video/AnalyserContext";
 import { ScoreCard } from "@/components/video/ScoreCard";
 import { Style1 } from "@/components/video/styles/Style1";
 import { Style2 } from "@/components/video/styles/Style2";
@@ -46,9 +47,11 @@ export function Step4Preview({ project }: { project: any }) {
     narratorColor: "#451a03", narratorBorderColor: "#f59e0b",
     scoreCardStyle: "bar", waveformStyle: "bars", nameGap: 16, fontStyle: "impact",
     colorA: "#4ade80", colorB: "#f472b6", nameGlowIntensity: 70, showArgTracker: true,
+    argTrackerSize: 12,
   });
   const [wordIdx, setWordIdx] = useState(-1);
   const [audioRemaining, setAudioRemaining] = useState(0);
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
 
   // Editable speaker names (local — saved to DB on blur)
   const [nameA, setNameA] = useState(project.speakerAName || "Speaker A");
@@ -210,6 +213,11 @@ export function Step4Preview({ project }: { project: any }) {
 
   const handlePlay = () => {
     unlockAudio();
+    // Set up shared analyser (only once — same source used by recording too)
+    if (!analyser) {
+      const an = getMediaAnalyser(previewAudioRef.current);
+      if (an) setAnalyser(an);
+    }
     if (phase !== "idle") {
       previewAudioRef.current.pause();
       setPhase("idle"); return;
@@ -274,8 +282,9 @@ export function Step4Preview({ project }: { project: any }) {
         const ac = getAC();
         if (ac) {
           const dest = ac.createMediaStreamDestination();
-          const src = ac.createMediaElementSource(previewAudioRef.current);
-          src.connect(dest); src.connect(ac.destination);
+          // Reuse shared source (createMediaElementSource can only be called once)
+          const src = getOrCreateMediaSource(previewAudioRef.current);
+          if (src) src.connect(dest);
           dest.stream.getAudioTracks().forEach((t: MediaStreamTrack) => combinedTracks.push(t));
         }
       } catch { /* audio capture not critical */ }
@@ -553,6 +562,15 @@ export function Step4Preview({ project }: { project: any }) {
                 </div>
               </div>
 
+              {/* ── Arg. Tracker Size ── */}
+              <div className="space-y-1.5">
+                <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Tracker Square Size <span className="text-gray-600">(Debate)</span></p>
+                <div className="flex items-center gap-2">
+                  <input type="range" min={6} max={24} value={cfg.argTrackerSize} onChange={e => set("argTrackerSize", parseInt(e.target.value))} className="flex-1 accent-primary h-1.5" />
+                  <span className="text-xs text-gray-400 tabular-nums w-8 text-right">{cfg.argTrackerSize}px</span>
+                </div>
+              </div>
+
               <div className="space-y-1.5">
                 <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Speaker Images</p>
                 <p className="text-[9px] text-gray-500">Used in Split & Podcast styles</p>
@@ -577,6 +595,7 @@ export function Step4Preview({ project }: { project: any }) {
         </AnimatePresence>
 
         {/* Canvas — always 16:9 */}
+        <AnalyserContext.Provider value={analyser}>
         <div ref={canvasContainerRef} className="w-full aspect-video relative rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black sub-canvas-root">
           <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${bg})`, opacity: cfg.bgOpacity / 100 }} />
           <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.25) 0%, transparent 30%, transparent 60%, rgba(0,0,0,0.4) 100%)" }} />
@@ -635,6 +654,7 @@ export function Step4Preview({ project }: { project: any }) {
             )}
           </AnimatePresence>
         </div>
+        </AnalyserContext.Provider>
       </div>
 
       {/* Playback controls bar */}

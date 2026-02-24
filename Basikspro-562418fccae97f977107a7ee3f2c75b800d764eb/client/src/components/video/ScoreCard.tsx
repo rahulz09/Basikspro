@@ -1,6 +1,19 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ModelScore } from "./types";
+
+function ModelIcon({ s }: { s: ModelScore }) {
+  if ((s as any).iconSvg) {
+    return (
+      <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full overflow-hidden flex items-center justify-center shadow-lg"
+        dangerouslySetInnerHTML={{ __html: (s as any).iconSvg }} />
+    );
+  }
+  return (
+    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-black text-[10px] sm:text-xs text-white shadow-lg"
+      style={{ backgroundColor: s.color }}>{s.logo}</div>
+  );
+}
 import { playScoreReveal } from "./helpers";
 
 interface Props {
@@ -37,9 +50,7 @@ export function ScoreCard({ scores, speakerName, avg, isA, totalA, totalB, nameA
                 <motion.div key={s.name} className="flex flex-col items-center gap-0.5"
                   initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: i * 0.1, type: "spring" }}>
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white/20 flex items-center justify-center font-black text-[10px] sm:text-xs text-white shadow-lg">
-                    {s.logo}
-                  </div>
+                  <ModelIcon s={s} />
                   <span className="text-[7px] sm:text-[9px] text-white/70 font-bold uppercase tracking-wide">{s.name}</span>
                 </motion.div>
               ))}
@@ -104,8 +115,12 @@ export function ScoreCard({ scores, speakerName, avg, isA, totalA, totalB, nameA
               {scores.map((s, i) => (
                 <motion.div key={s.name} className="flex flex-col items-center"
                   initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.12, type: "spring" }}>
-                  <div className="w-11 h-11 rounded-full flex items-center justify-center font-black text-xs text-white shadow-lg mb-1"
-                    style={{ backgroundColor: s.color }}>{s.logo}</div>
+                  <div className="w-11 h-11 rounded-full overflow-hidden shadow-lg mb-1 flex items-center justify-center">
+                    {(s as any).iconSvg
+                      ? <div className="w-full h-full" dangerouslySetInnerHTML={{ __html: (s as any).iconSvg }} />
+                      : <div className="w-full h-full flex items-center justify-center font-black text-xs text-white" style={{ backgroundColor: s.color }}>{s.logo}</div>
+                    }
+                  </div>
                   <span className="text-[9px] text-gray-500 font-semibold text-center leading-tight">{s.name}</span>
                   <motion.span className="text-sm font-black text-gray-800 mt-0.5"
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.12 + 0.35 }}>
