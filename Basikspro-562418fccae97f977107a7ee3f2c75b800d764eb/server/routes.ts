@@ -5,6 +5,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
+import { startVideoGeneration } from "./videoGenerator";
 
 // Lazy initialization for AI services
 let ai: GoogleGenAI | null = null;
@@ -246,8 +247,10 @@ Example: [{"speaker":"N","text":"..."},{"speaker":"A","text":"..."},{"speaker":"
 Do NOT include any markdown formatting. Just the raw JSON array.`;
       }
 
+      // Use a safe fallback model if the stored model ID is not a valid text generation model
+      const safeModel = (project.model && !project.model.includes("tts")) ? project.model : "gemini-2.0-flash";
       const response = await getGeminiClient().models.generateContent({
-        model: project.model,
+        model: safeModel,
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -299,8 +302,9 @@ Speaker: ${speakerLabel}
 Instructions: ${instructions}
 Just output the rewritten text and nothing else.`;
 
+      const rewriteModel = (project?.model && !project.model.includes("tts")) ? project.model : "gemini-2.0-flash";
       const response = await getGeminiClient().models.generateContent({
-        model: project?.model || "gemini-2.0-flash",
+        model: rewriteModel,
         contents: prompt,
       });
 
@@ -328,7 +332,7 @@ Just output the rewritten text and nothing else.`;
         dbDialogue.speaker === 'B' ? project.speakerBVoice :
         project.speakerNarratorVoice || 'shimmer';
 
-      const provider = project.audioProvider || 'openai';
+      const provider = (!project.audioProvider || project.audioProvider === 'openai') ? 'gemini' : project.audioProvider;
       let dataUrl: string;
 
       try {
@@ -405,6 +409,71 @@ Just output the rewritten text and nothing else.`;
     } catch (err) {
       console.error("generateTranscript error:", err);
       res.status(500).json({ message: "Failed to generate transcript" });
+    }
+  });
+
+  // Video generation endpoints
+  app.post(api.video.generateVideo.path, async (req, res) => {
+    try {
+      const projectId = Number(req.params.id);
+      const body = api.video.generateVideo.input.parse(req.body);
+
+      const project = await storage.getProject(projectId);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+
+      // Create video job
+      const job = await storage.createVideoJob({
+        projectId,
+        status: "queued",
+        progress: 0,
+        config: JSON.stringify(body),
+        videoUrl: null,
+        error: null,
+      });
+
+      // Start video generation in background
+      const videoRequest = {
+        ...body,
+        backgroundImage: project.backgroundImage || "",
+        speakerAName: project.speakerAName,
+        speakerBName: project.speakerBName,
+        speakerNarratorName: project.speakerNarratorName,
+        topic: project.topic,
+      };
+      startVideoGeneration(job.id, projectId, videoRequest).catch(err => {
+        console.error("Video generation error:", err);
+      });
+
+      res.json({
+        jobId: job.id,
+        status: job.status,
+      });
+    } catch (err) {
+      console.error("generateVideo error:", err);
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to start video generation" });
+    }
+  });
+
+  app.get(api.video.getVideoStatus.path, async (req, res) => {
+    try {
+      const jobId = Number(req.params.jobId);
+      const job = await storage.getVideoJob(jobId);
+      
+      if (!job) return res.status(404).json({ message: "Job not found" });
+
+      res.json({
+        id: job.id,
+        status: job.status,
+        progress: job.progress,
+        videoUrl: job.videoUrl,
+        error: job.error,
+      });
+    } catch (err) {
+      console.error("getVideoStatus error:", err);
+      res.status(500).json({ message: "Failed to get video status" });
     }
   });
 

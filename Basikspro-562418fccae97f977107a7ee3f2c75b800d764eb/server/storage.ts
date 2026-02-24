@@ -2,12 +2,15 @@ import { db } from "./db";
 import {
   projects,
   dialogues,
+  videoJobs,
   type Project,
   type InsertProject,
   type UpdateProjectRequest,
   type Dialogue,
   type InsertDialogue,
   type UpdateDialogueRequest,
+  type VideoJob,
+  type InsertVideoJob,
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
@@ -23,6 +26,10 @@ export interface IStorage {
   updateDialogue(id: number, updates: UpdateDialogueRequest): Promise<Dialogue>;
   deleteDialogues(projectId: number): Promise<void>;
   insertDialogues(dialoguesToInsert: InsertDialogue[]): Promise<Dialogue[]>;
+  
+  createVideoJob(job: InsertVideoJob): Promise<VideoJob>;
+  getVideoJob(id: number): Promise<VideoJob | undefined>;
+  updateVideoJob(id: number, updates: Partial<VideoJob>): Promise<VideoJob>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -76,6 +83,24 @@ export class DatabaseStorage implements IStorage {
 
   async insertDialogues(dialoguesToInsert: InsertDialogue[]): Promise<Dialogue[]> {
     return await db.insert(dialogues).values(dialoguesToInsert).returning();
+  }
+
+  async createVideoJob(job: InsertVideoJob): Promise<VideoJob> {
+    const [created] = await db.insert(videoJobs).values(job).returning();
+    return created;
+  }
+
+  async getVideoJob(id: number): Promise<VideoJob | undefined> {
+    const [job] = await db.select().from(videoJobs).where(eq(videoJobs.id, id));
+    return job;
+  }
+
+  async updateVideoJob(id: number, updates: Partial<VideoJob>): Promise<VideoJob> {
+    const [updated] = await db.update(videoJobs)
+      .set(updates)
+      .where(eq(videoJobs.id, id))
+      .returning();
+    return updated;
   }
 }
 

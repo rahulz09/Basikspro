@@ -34,6 +34,62 @@ function colorProps(color: string) {
   return { className: color, style: {} };
 }
 
+// ── Bars with real audio ──────────────────────────────────────────────────────
+function BarsReal({ color }: { color: string }) {
+  const analyser = useAnalyser();
+  const barsRef = useRef<(HTMLDivElement | null)[]>([]);
+  const rafRef = useRef(0);
+  const dataRef = useRef<Uint8Array | null>(null);
+
+  useEffect(() => {
+    if (!analyser) return;
+    if (!dataRef.current) dataRef.current = new Uint8Array(analyser.frequencyBinCount);
+    const data = dataRef.current;
+    const smoothed = new Array(15).fill(0);
+
+    function tick() {
+      analyser!.getByteFrequencyData(data);
+      for (let i = 0; i < 15; i++) {
+        const bin = Math.floor(10 + i * 3.5);
+        const val = Math.min(1, data[bin] / 180);
+        smoothed[i] = smoothed[i] * 0.7 + val * 0.3;
+        const h = 30 + smoothed[i] * 100;
+        if (barsRef.current[i]) barsRef.current[i]!.style.height = `${h}%`;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    }
+    tick();
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [analyser]);
+
+  const cp = colorProps(color);
+
+  if (!analyser) {
+    return (
+      <div className="flex items-end gap-px h-7">
+        {HEIGHTS.map((h, i) => (
+          <motion.div key={i}
+            className={`w-[3px] rounded-full ${cp.className}`}
+            style={cp.style}
+            animate={{ height: [`${h * 0.3}%`, `${Math.min(100, h * 0.7)}%`, `${h * 0.3}%`] }}
+            transition={{ repeat: Infinity, duration: 0.35 + i * 0.04, ease: "easeInOut" }} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-end gap-px h-7">
+      {HEIGHTS.map((_, i) => (
+        <div key={i}
+          ref={el => barsRef.current[i] = el}
+          className={`w-[3px] rounded-full transition-[height] duration-75 ease-out ${cp.className}`}
+          style={{ height: "30%", ...cp.style }} />
+      ))}
+    </div>
+  );
+}
+
 // ── Single VU-meter bar driven by AnalyserNode (real audio) ──────────────────
 function MeterBar({ color }: { color: string }) {
   const analyser = useAnalyser();
@@ -47,62 +103,87 @@ function MeterBar({ color }: { color: string }) {
     if (!analyser) return;
     if (!dataRef.current) dataRef.current = new Uint8Array(analyser.frequencyBinCount);
     const data = dataRef.current;
+    let smoothed = 0;
+    let peakHold = 0;
+    let peakTimer = 0;
 
     function tick() {
       analyser!.getByteFrequencyData(data);
-      // RMS of frequency bins → normalised 0-1
-      const rms = Math.sqrt(data.reduce((s, v) => s + v * v, 0) / data.length);
-      const level = Math.min(1, rms / 72); // 72 ≈ half RMS for speech
-      const pct   = `${(level * 100).toFixed(1)}%`;
+      // Focus on speech frequencies (200Hz-4kHz range, bins ~10-60)
+      const slice = data.slice(10, 60);
+      const max = Math.max(...slice);
+      const avg = slice.reduce((s, v) => s + v, 0) / slice.length;
+      const level = Math.min(1, (max * 0.4 + avg * 0.6) / 200); // Calibrated for speech
+      
+      // Smooth with faster attack, slower release
+      smoothed = level > smoothed ? smoothed * 0.5 + level * 0.5 : smoothed * 0.92 + level * 0.08;
+      const pct = `${(smoothed * 100).toFixed(1)}%`;
+      
+      // Peak hold with 800ms hold time
+      if (level > peakHold) {
+        peakHold = level;
+        peakTimer = 0;
+      } else {
+        peakTimer++;
+        if (peakTimer > 48) peakHold *= 0.92; // Decay after hold
+      }
+      const peakPct = `${(peakHold * 100).toFixed(1)}%`;
+      
       if (fillRef.current) fillRef.current.style.height = pct;
-      if (peakRef.current) peakRef.current.style.bottom = pct;
+      if (peakRef.current) peakRef.current.style.bottom = peakPct;
       rafRef.current = requestAnimationFrame(tick);
     }
     tick();
     return () => cancelAnimationFrame(rafRef.current);
   }, [analyser]);
 
-  const fillColor  = resolveHex(color, 0.92);
-  const trackColor = resolveHex(color, 0.12);
+  const fillColor  = resolveHex(color, 0.85);
+  const trackColor = resolveHex(color, 0.08);
   const peakColor  = resolveHex(color, 1);
 
   // Fallback simulated animation when no analyser is available
   if (!analyser) {
-    const SIM = ["12%", "78%", "50%", "92%", "35%", "68%", "20%", "85%", "45%", "12%"] as const;
-    const TIMES = [0, 0.11, 0.25, 0.4, 0.53, 0.65, 0.75, 0.85, 0.93, 1] as const;
+    const SIM = ["8%", "45%", "72%", "38%", "85%", "52%", "25%", "68%", "42%", "15%"] as const;
+    const TIMES = [0, 0.12, 0.24, 0.38, 0.5, 0.62, 0.74, 0.84, 0.92, 1] as const;
     return (
-      <div className="relative rounded overflow-hidden" style={{ width: 14, height: 68, backgroundColor: trackColor }}>
+      <div className="relative rounded-lg overflow-hidden shadow-lg" style={{ width: 18, height: 80, backgroundColor: trackColor, border: `1px solid ${resolveHex(color, 0.2)}` }}>
         <motion.div
           ref={fillRef}
           className="absolute bottom-0 left-0 right-0"
-          style={{ background: `linear-gradient(to top, ${fillColor}, ${peakColor} 85%)` }}
+          style={{ background: `linear-gradient(to top, ${fillColor}, ${peakColor} 90%)` }}
           animate={{ height: [...SIM] }}
-          transition={{ repeat: Infinity, duration: 1.7, ease: "linear", times: [...TIMES] }}
+          transition={{ repeat: Infinity, duration: 2.1, ease: "easeInOut", times: [...TIMES] }}
         />
-        {[25, 50, 75].map(p => (
+        {[20, 40, 60, 80].map(p => (
           <div key={p} className="absolute left-0 right-0 pointer-events-none"
-            style={{ bottom: `${p}%`, height: 1.5, backgroundColor: "rgba(0,0,0,0.3)" }} />
+            style={{ bottom: `${p}%`, height: 1, backgroundColor: "rgba(0,0,0,0.25)" }} />
         ))}
+        <motion.div
+          className="absolute left-0 right-0"
+          style={{ height: 2.5, backgroundColor: peakColor, boxShadow: `0 0 6px ${peakColor}` }}
+          animate={{ bottom: [...SIM] }}
+          transition={{ repeat: Infinity, duration: 2.1, ease: "easeInOut", times: [...TIMES] }}
+        />
       </div>
     );
   }
 
   return (
-    <div className="relative rounded overflow-hidden" style={{ width: 14, height: 68, backgroundColor: trackColor }}>
+    <div className="relative rounded-lg overflow-hidden shadow-lg" style={{ width: 18, height: 80, backgroundColor: trackColor, border: `1px solid ${resolveHex(color, 0.2)}` }}>
       {/* Main fill — height driven by RAF above */}
       <div ref={fillRef}
-        className="absolute bottom-0 left-0 right-0 transition-[height] duration-[40ms]"
-        style={{ height: "0%", background: `linear-gradient(to top, ${fillColor}, ${peakColor} 85%)` }}
+        className="absolute bottom-0 left-0 right-0 transition-[height] duration-75 ease-out"
+        style={{ height: "0%", background: `linear-gradient(to top, ${fillColor}, ${peakColor} 90%)` }}
       />
       {/* Segment marks */}
-      {[25, 50, 75].map(p => (
+      {[20, 40, 60, 80].map(p => (
         <div key={p} className="absolute left-0 right-0 pointer-events-none"
-          style={{ bottom: `${p}%`, height: 1.5, backgroundColor: "rgba(0,0,0,0.3)" }} />
+          style={{ bottom: `${p}%`, height: 1, backgroundColor: "rgba(0,0,0,0.25)" }} />
       ))}
-      {/* Peak hold dot */}
+      {/* Peak hold indicator */}
       <div ref={peakRef}
-        className="absolute left-0 right-0 transition-[bottom] duration-[60ms]"
-        style={{ bottom: "0%", height: 2, backgroundColor: peakColor }}
+        className="absolute left-0 right-0 transition-[bottom] duration-100 ease-out"
+        style={{ bottom: "0%", height: 2.5, backgroundColor: peakColor, boxShadow: `0 0 6px ${peakColor}` }}
       />
     </div>
   );
@@ -113,17 +194,7 @@ export function WaveformBars({ color, variant = "bars" }: Props) {
 
   // ── Bars ──
   if (variant === "bars") {
-    return (
-      <div className="flex items-end gap-px h-7">
-        {HEIGHTS.map((h, i) => (
-          <motion.div key={i}
-            className={`w-[3px] rounded-full ${cp.className}`}
-            style={cp.style}
-            animate={{ height: [`${h * 0.3}%`, `${Math.min(100, h * 0.7)}%`, `${h * 0.3}%`] }}
-            transition={{ repeat: Infinity, duration: 0.35 + i * 0.04, ease: "easeInOut" }} />
-        ))}
-      </div>
-    );
+    return <BarsReal color={color} />;
   }
 
   // ── Pulse ──

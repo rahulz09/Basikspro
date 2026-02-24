@@ -103,6 +103,36 @@ export const api = {
         400: errorSchemas.validation,
       },
     },
+  },
+  video: {
+    generateVideo: {
+      method: 'POST' as const,
+      path: '/api/projects/:id/generate-video' as const,
+      input: z.object({
+        segments: z.array(z.any()),
+      }),
+      responses: {
+        200: z.object({
+          jobId: z.number(),
+          status: z.string(),
+        }),
+        400: errorSchemas.validation,
+      },
+    },
+    getVideoStatus: {
+      method: 'GET' as const,
+      path: '/api/video-jobs/:jobId' as const,
+      responses: {
+        200: z.object({
+          id: z.number(),
+          status: z.string(),
+          progress: z.number(),
+          videoUrl: z.string().nullable(),
+          error: z.string().nullable(),
+        }),
+        404: errorSchemas.notFound,
+      },
+    },
   }
 };
 

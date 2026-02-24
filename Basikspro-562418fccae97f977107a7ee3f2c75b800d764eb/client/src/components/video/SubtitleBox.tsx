@@ -58,19 +58,15 @@ export function SubtitleBox({ cfg, setCfg, children, extraBottom = 0, isA = fals
 
         {children}
 
-        {/* Pointer line toward active speaker */}
-        {cfg.showPointerLine && !isNarrator && isSpeaking && (
-          <div className="absolute pointer-events-none"
-            style={{
-              bottom: "50%",
-              [isA ? "right" : "left"]: "100%",
-              width: "120%",
-              height: 2,
-              background: `linear-gradient(to ${isA ? "left" : "right"}, ${isA ? "rgba(96,165,250,0.8)" : "rgba(251,113,133,0.8)"}, transparent)`,
-              borderRadius: 2,
-            }}
-          />
-        )}
+        {/* Pointer line — short, bottom of subtitle box, pointing left or right */}
+        {cfg.showPointerLine && !isNarrator && isSpeaking && (() => {
+          const side = cfg.pointerLineSide === "auto" ? (isA ? "left" : "right") : cfg.pointerLineSide;
+          const color = isA ? "rgba(96,165,250,0.9)" : "rgba(251,113,133,0.9)";
+          return (
+            <div className="absolute pointer-events-none" style={{ bottom: -10, [side]: 0, width: 48, height: 3, borderRadius: 2,
+              background: `linear-gradient(to ${side === "left" ? "right" : "left"}, transparent, ${color})` }} />
+          );
+        })()}
 
         {/* Top-center height handle */}
         <div className="absolute top-1 left-1/2 -translate-x-1/2 z-40 cursor-ns-resize opacity-0 group-hover:opacity-100 transition-opacity duration-200"

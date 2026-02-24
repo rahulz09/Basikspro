@@ -3,12 +3,13 @@ import { useLocation, useParams } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Settings, FileText, Mic, LayoutTemplate, ArrowLeft, Loader2, Video } from "lucide-react";
 import { useProject } from "@/hooks/use-projects";
+import { VideoConfigProvider } from "@/components/video/VideoConfigContext";
 import { Step1Setup } from "./wizard/Step1Setup";
 import { Step2Script } from "./wizard/Step2Script";
 import { Step3Audio } from "./wizard/Step3Audio";
 import { Step4Preview } from "./wizard/Step4Preview";
 
-export default function Wizard() {
+function WizardContent() {
   const { id } = useParams<{ id: string }>();
   const projectId = parseInt(id || "0");
   const [location, setLocation] = useLocation();
@@ -67,19 +68,28 @@ export default function Wizard() {
           </ol>
         </nav>
 
-        <div className="w-9 shrink-0" />
+        {/* Spacer to balance left side */}
+        <div className="w-[60px] shrink-0" />
       </header>
 
-      <main className="flex-1 p-4 sm:p-6 lg:p-10 overflow-x-hidden overflow-y-auto">
+      <main className="flex-1 overflow-x-hidden overflow-y-auto">
         <AnimatePresence mode="wait">
           <motion.div key={currentStep} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }} className="h-full">
-            {currentStep === 1 && <Step1Setup project={project} onNext={() => setCurrentStep(2)} />}
-            {currentStep === 2 && <Step2Script project={project} onNext={() => setCurrentStep(3)} />}
-            {currentStep === 3 && <Step3Audio project={project} onNext={() => setCurrentStep(4)} />}
+            {currentStep === 1 && <div className="p-4 sm:p-6 lg:p-10"><Step1Setup project={project} onNext={() => setCurrentStep(2)} /></div>}
+            {currentStep === 2 && <div className="p-4 sm:p-6 lg:p-10"><Step2Script project={project} onNext={() => setCurrentStep(3)} /></div>}
+            {currentStep === 3 && <div className="p-4 sm:p-6 lg:p-10"><Step3Audio project={project} onNext={() => setCurrentStep(4)} /></div>}
             {currentStep === 4 && <Step4Preview project={project} />}
           </motion.div>
         </AnimatePresence>
       </main>
     </div>
+  );
+}
+
+export default function Wizard() {
+  return (
+    <VideoConfigProvider>
+      <WizardContent />
+    </VideoConfigProvider>
   );
 }

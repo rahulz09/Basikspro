@@ -59,8 +59,8 @@ export function getMediaAnalyser(el: HTMLAudioElement): AnalyserNode | null {
     const src = getOrCreateMediaSource(el); if (!src) return null;
     if (!_analyser) {
       _analyser = ac.createAnalyser();
-      _analyser.fftSize = 256;
-      _analyser.smoothingTimeConstant = 0.75;
+      _analyser.fftSize = 512;
+      _analyser.smoothingTimeConstant = 0.3;
       src.connect(_analyser);
       _analyser.connect(ac.destination);
     }
